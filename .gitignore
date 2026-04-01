@@ -12,3 +12,28 @@ desktop.ini
 *~
 .vscode/
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets & local config
+.env
+*.env.local
+app/.streamlit/secrets.toml
+
+# App data (quiz results — local only)
+app/data/results.json
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,8 @@
+# Covered by root .gitignore — this file kept for standalone app usage
+.streamlit/secrets.toml
+data/results.json
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
