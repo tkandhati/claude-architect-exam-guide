@@ -3,6 +3,7 @@ import time
 from utils.prompts import EXAM_CATEGORIES, QUIZ_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
 from utils.claude_client import get_claude_json, is_api_configured
 from utils.storage import save_result
+from utils.inspiration import build_inspired_prompt
 
 st.set_page_config(page_title="Quick Test", page_icon="⚡", layout="wide")
 
@@ -37,8 +38,8 @@ def reset_quiz():
 
 
 def load_quiz(cat, n):
-    with st.spinner(f"Generating {n} questions for '{cat}'..."):
-        prompt = QUIZ_GENERATION_PROMPT.format(n=n, category=cat)
+    with st.spinner(f"Generating {n} questions for '{cat}' (fetching real exam examples…)"):
+        prompt = build_inspired_prompt(QUIZ_GENERATION_PROMPT.format(n=n, category=cat))
         questions = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
 
     if not questions or not isinstance(questions, list):

@@ -67,7 +67,7 @@ with c2:
 
 with c3:
     st.markdown("### 🏆 Full Simulation")
-    st.markdown("40-question timed exam across all 7 categories. Pass mark: 75%.")
+    st.markdown("60-question timed exam across all 5 official domains. 120 min. Pass mark: 75% (≈ 720/1000).")
     st.page_link("pages/3_Full_Simulation.py", label="Open Simulation →")
 
 with c4:

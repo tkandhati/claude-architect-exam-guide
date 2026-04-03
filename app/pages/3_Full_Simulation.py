@@ -3,12 +3,13 @@ import time
 from utils.prompts import EXAM_CATEGORIES, SIMULATION_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
 from utils.claude_client import get_claude_json, is_api_configured
 from utils.storage import save_result
+from utils.inspiration import build_inspired_prompt
 
 st.set_page_config(page_title="Full Simulation", page_icon="🏆", layout="wide")
 
-TOTAL_QUESTIONS = 40
-EXAM_DURATION = 60 * 60  # 60 minutes in seconds
-PASS_PCT = 75
+TOTAL_QUESTIONS = 60
+EXAM_DURATION = 120 * 60  # 120 minutes in seconds (matches real CCA-F exam)
+PASS_PCT = 75  # ≈ 720/1000 scaled score on the real exam
 
 
 def reset_sim():
@@ -18,9 +19,8 @@ def reset_sim():
 
 
 def load_sim():
-    per_cat = TOTAL_QUESTIONS // len(EXAM_CATEGORIES)
-    with st.spinner(f"Generating {TOTAL_QUESTIONS} questions across all categories…"):
-        prompt = SIMULATION_GENERATION_PROMPT.format(n=TOTAL_QUESTIONS, per_cat=per_cat)
+    with st.spinner(f"Generating {TOTAL_QUESTIONS} scenario-based questions (fetching real exam examples…)"):
+        prompt = build_inspired_prompt(SIMULATION_GENERATION_PROMPT.format(n=TOTAL_QUESTIONS))
         questions = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
 
     if not questions or not isinstance(questions, list):
@@ -87,12 +87,12 @@ st.title("🏆 Full Simulation Exam")
 
 if not questions:
     st.markdown(f"""
-    **Exam Rules:**
-    - {TOTAL_QUESTIONS} questions across all 7 categories
-    - 60-minute time limit
-    - Pass mark: **{PASS_PCT}%**
-    - Flag questions for review
-    - Auto-submits when time expires
+    **Exam Rules (mirrors real CCA-F format):**
+    - {TOTAL_QUESTIONS} scenario-based questions across all 5 official domains
+    - 120-minute time limit
+    - Pass mark: **{PASS_PCT}%** (≈ 720/1,000 scaled score on the real exam)
+    - All questions are production scenario-anchored — no trivia
+    - Flag questions for review; auto-submits when time expires
     """)
     if st.button("Start Exam", type="primary"):
         if load_sim():
