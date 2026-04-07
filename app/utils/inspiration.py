@@ -108,20 +108,54 @@ def fetch_exam_inspiration(timeout: int = 6) -> str:
     return combined
 
 
+def _load_sample_questions_text() -> str:
+    """Load sample questions from the static bank as plain text for use as inspiration."""
+    import os, json
+    path = os.path.join(os.path.dirname(__file__), "..", "data", "sample_questions.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            questions = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ""
+
+    lines = ["=== OFFICIAL PRACTICE EXAM QUESTIONS (high-priority reference) ===\n"]
+    for q in questions:
+        lines.append(f"Q: {q['question']}")
+        for opt in q.get("options", []):
+            lines.append(f"  {opt}")
+        lines.append(f"Answer: {q['answer']}")
+        lines.append(f"Category: {q.get('category', '')}")
+        lines.append(f"Explanation: {q.get('explanation', '')}\n")
+    return "\n".join(lines)
+
+
 def build_inspired_prompt(base_prompt: str) -> str:
     """
     Prepend real exam examples to a generation prompt.
-    If all fetches fail, returns base_prompt unchanged.
+    Always includes the static sample question bank (official practice exam questions).
+    Also includes any successfully fetched web content.
     """
-    inspiration = fetch_exam_inspiration()
-    if not inspiration:
+    parts = []
+
+    # Always include the static sample bank — highest priority reference
+    sample_text = _load_sample_questions_text()
+    if sample_text:
+        parts.append(sample_text)
+
+    # Also include web-fetched content if available
+    web_inspiration = fetch_exam_inspiration()
+    if web_inspiration:
+        parts.append("=== ADDITIONAL STUDY MATERIAL ===\n\n" + web_inspiration)
+
+    if not parts:
         return base_prompt
 
+    combined = "\n\n".join(parts)
     prefix = (
-        "Below are real exam questions and study material from official CCA-F preparation sources. "
-        "Study their scenario structure, question wording, answer option style, and which concepts they test. "
-        "Generate questions that match this exact style and difficulty level.\n\n"
-        f"{inspiration}\n\n"
+        "Below are real CCA-F exam questions and study material. "
+        "Study their scenario structure, production context, option style, and the concepts they test. "
+        "Generate questions that match this exact depth, specificity, and difficulty.\n\n"
+        f"{combined}\n\n"
         "---\n\n"
         "Now generate questions following the instructions below:\n\n"
     )
