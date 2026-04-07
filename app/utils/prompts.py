@@ -77,26 +77,30 @@ GOTCHA_TOPICS = {
 }
 
 ENHANCED_SCHEMA_INSTRUCTIONS = """
-Each question MUST use this exact JSON structure with no missing fields:
-{
-  "question": "Scenario-based question text with `inline_code` where relevant",
-  "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-  "answer": "B",
-  "category": "one of the 5 domain names",
-  "explanation": "B is correct because [precise structural/deterministic reason]. This ensures [production guarantee].",
-  "distractor_analysis": {
-    "A": {
-      "why_wrong": "Specific reason A fails in this production scenario.",
-      "when_correct": "The scenario where A would be the right answer instead.",
-      "mistake_category": "one of: Prompt-over-Structure Fallacy | Over-Engineering | Correct Direction Wrong Order | Surface-Level Fix | Non-Existent Feature | Wrong Layer | Repeating Failed Strategy | Ignoring Constraint | Misread Constraint | Lagging Signal"
-    },
-    "C": { "why_wrong": "...", "when_correct": "...", "mistake_category": "..." },
-    "D": { "why_wrong": "...", "when_correct": "...", "mistake_category": "..." }
-  },
-  "close_options": ["A"],
-  "close_vs_correct": "Why the close option(s) are tempting and precisely what makes the correct answer better in this specific scenario."
-}
-Note: distractor_analysis should contain entries for every wrong option (all options except the answer).
+OUTPUT FORMAT: Return ONLY a raw JSON array — no markdown, no code fences, no explanation text before or after.
+
+Each element in the array must be a JSON object with EXACTLY these keys (all lowercase, no spaces, no quotes in key names):
+  question       — string: the scenario-based question
+  options        — array of 4 strings, each starting with "A. ", "B. ", "C. ", or "D. "
+  answer         — string: single letter of the correct option, e.g. "B"
+  category       — string: one of the 5 domain names
+  explanation    — string: why the correct answer is structurally/deterministically correct
+  distractor_analysis — object with one key per wrong option letter, each containing:
+      why_wrong       — string: specific reason this option fails in the scenario
+      when_correct    — string: scenario where this option would be the right answer
+      mistake_category — string, one of:
+          Prompt-over-Structure Fallacy
+          Over-Engineering
+          Correct Direction Wrong Order
+          Surface-Level Fix
+          Non-Existent Feature
+          Wrong Layer
+          Repeating Failed Strategy
+          Ignoring Constraint
+          Misread Constraint
+          Lagging Signal
+  close_options  — array of letter strings identifying the hardest-to-distinguish wrong option(s)
+  close_vs_correct — string: exactly why the close option is tempting vs why the correct answer wins
 """
 
 QUIZ_GENERATION_PROMPT = """Generate {n} multiple-choice exam questions for the domain: "{category}"

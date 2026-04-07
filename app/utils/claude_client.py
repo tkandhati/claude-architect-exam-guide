@@ -1,4 +1,5 @@
 import json
+import re
 import streamlit as st
 import anthropic
 
@@ -100,6 +101,73 @@ When explaining:
     )
 
 
+def _extract_json(raw: str) -> list | dict:
+    """
+    Robustly extract a JSON array or object from raw text.
+    Tries multiple strategies in order of reliability.
+    """
+    text = raw.strip()
+
+    # Strategy 1: direct parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: find the outermost JSON array using regex (handles surrounding prose/fences)
+    match = re.search(r'\[.*\]', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 3: find the outermost JSON object
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 4: strip markdown code fences (handles ``` and ```json)
+    stripped = re.sub(r'^```[a-z]*\n?', '', text, flags=re.MULTILINE)
+    stripped = re.sub(r'\n?```$', '', stripped, flags=re.MULTILINE)
+    stripped = stripped.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    raise json.JSONDecodeError("Could not extract JSON from response", text, 0)
+
+
+def _validate_questions(questions: list) -> list:
+    """
+    Filter out malformed question objects (e.g. template echoes with bad keys).
+    A valid question must have 'question', 'options', and 'answer' as plain string keys.
+    """
+    valid = []
+    required = {"question", "options", "answer"}
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+        # Keys must be clean strings with no newlines or quotes
+        keys = set(q.keys())
+        if not required.issubset(keys):
+            continue
+        if any('\n' in k or '"' in k for k in keys):
+            continue
+        # question must be a non-empty string
+        if not isinstance(q.get("question"), str) or not q["question"].strip():
+            continue
+        # options must be a list of 4 items
+        if not isinstance(q.get("options"), list) or len(q["options"]) < 2:
+            continue
+        valid.append(q)
+    return valid
+
+
 def get_claude_json(prompt: str, system_prompt: str = "") -> list | dict | None:
     """Call Claude and parse the response as JSON. Returns parsed object or None on error."""
     client = _get_client()
@@ -116,15 +184,16 @@ def get_claude_json(prompt: str, system_prompt: str = "") -> list | dict | None:
                 raw = block.text
                 break
 
-        # Strip markdown fences if present
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:])
-            if text.endswith("```"):
-                text = text[: text.rfind("```")]
+        result = _extract_json(raw)
 
-        return json.loads(text.strip())
+        # If it's a list of question dicts, validate and clean them
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            result = _validate_questions(result)
+            if not result:
+                st.error("Claude returned questions with malformed keys. Please regenerate.")
+                return None
+
+        return result
 
     except json.JSONDecodeError as e:
         st.error(f"Failed to parse Claude's response as JSON: {e}")
