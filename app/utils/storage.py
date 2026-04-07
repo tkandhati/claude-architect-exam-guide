@@ -1,9 +1,25 @@
 import json
 import os
+import random
 from datetime import datetime
 from typing import Any
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "results.json")
+SAMPLE_QUESTIONS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "sample_questions.json")
+
+
+def load_sample_questions(category: str | None = None, n: int | None = None) -> list[dict]:
+    """Load questions from the static sample bank. Optionally filter by category and limit count."""
+    try:
+        with open(SAMPLE_QUESTIONS_FILE, "r") as f:
+            questions = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    if category:
+        questions = [q for q in questions if q.get("category") == category]
+    if n and len(questions) > n:
+        questions = random.sample(questions, n)
+    return questions
 
 
 def _load_raw() -> list[dict]:

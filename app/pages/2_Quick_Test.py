@@ -1,11 +1,26 @@
 import streamlit as st
 import time
 from utils.prompts import EXAM_CATEGORIES, QUIZ_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
-from utils.claude_client import get_claude_json, is_api_configured
-from utils.storage import save_result
+from utils.claude_client import get_claude_json, is_api_configured, stream_question_chat
+from utils.storage import save_result, load_sample_questions
 from utils.inspiration import build_inspired_prompt
 
 st.set_page_config(page_title="Quick Test", page_icon="⚡", layout="wide")
+
+MISTAKE_CATEGORY_COLORS = {
+    "Prompt-over-Structure Fallacy": "🔴",
+    "Over-Engineering": "🟠",
+    "Correct Direction Wrong Order": "🟡",
+    "Surface-Level Fix": "🟡",
+    "Non-Existent Feature": "⚫",
+    "Wrong Layer": "🟠",
+    "Repeating Failed Strategy": "🔴",
+    "Ignoring Constraint": "🔴",
+    "Misread Constraint": "🟡",
+    "Lagging Signal": "🟠",
+    "Correct Direction, Wrong Order": "🟡",
+    "Correct Direction, Wrong Scope": "🟡",
+}
 
 with st.sidebar:
     if is_api_configured():
@@ -15,7 +30,6 @@ with st.sidebar:
 
     st.header("Quiz Settings")
 
-    # Allow pre-filtering from Page 4
     default_cat_idx = 0
     if "preselect_category" in st.session_state:
         cat = st.session_state.pop("preselect_category")
@@ -25,6 +39,12 @@ with st.sidebar:
     category = st.selectbox("Category", EXAM_CATEGORIES, index=default_cat_idx)
     n_questions = st.selectbox("Number of questions", [5, 10, 15], index=1)
 
+    source_mode = st.radio(
+        "Question source",
+        ["Sample bank (from official practice exam)", "AI-generated"],
+        index=0,
+    )
+
     generate_btn = st.button("Generate Quiz", type="primary", use_container_width=True)
     regenerate_btn = st.button("Regenerate", use_container_width=True)
 
@@ -33,14 +53,21 @@ st.title("⚡ Quick Test")
 
 def reset_quiz():
     for key in ["qt_questions", "qt_answers", "qt_start_time", "qt_finished",
-                "qt_current", "qt_category", "qt_score_saved"]:
+                "qt_current", "qt_category", "qt_score_saved", "qt_learn_more_history"]:
         st.session_state.pop(key, None)
 
 
-def load_quiz(cat, n):
-    with st.spinner(f"Generating {n} questions for '{cat}' (fetching real exam examples…)"):
-        prompt = build_inspired_prompt(QUIZ_GENERATION_PROMPT.format(n=n, category=cat))
-        questions = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
+def load_quiz(cat, n, use_samples):
+    if use_samples:
+        questions = load_sample_questions(n=n)
+        if not questions:
+            st.warning("Sample bank empty for this category — falling back to AI-generated questions.")
+            use_samples = False
+
+    if not use_samples:
+        with st.spinner(f"Generating {n} questions for '{cat}'…"):
+            prompt = build_inspired_prompt(QUIZ_GENERATION_PROMPT.format(n=n, category=cat))
+            questions = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
 
     if not questions or not isinstance(questions, list):
         st.error("Failed to generate questions. Please try again.")
@@ -53,16 +80,22 @@ def load_quiz(cat, n):
     st.session_state["qt_current"] = 0
     st.session_state["qt_category"] = cat
     st.session_state["qt_score_saved"] = False
+    st.session_state["qt_learn_more_history"] = {}
 
 
 if generate_btn or regenerate_btn:
     reset_quiz()
-    load_quiz(category, n_questions)
+    use_samples = source_mode.startswith("Sample")
+    load_quiz(category, n_questions, use_samples)
 
 questions = st.session_state.get("qt_questions")
 
 if not questions:
     st.info("Select a category and click **Generate Quiz** to start.")
+    st.markdown("""
+**Sample bank** uses real questions collected from the official Anthropic practice exam.
+**AI-generated** creates fresh scenario-based questions in the same style.
+    """)
     st.stop()
 
 answers = st.session_state.get("qt_answers", {})
@@ -71,13 +104,108 @@ current = st.session_state.get("qt_current", 0)
 cat = st.session_state.get("qt_category", category)
 total = len(questions)
 
+
+def render_distractor_analysis(q: dict, user_ans: str):
+    """Render the enhanced explanation panel with per-option analysis and Learn More chat."""
+    correct_ans = q.get("answer", "")
+    explanation = q.get("explanation", "")
+    distractor_analysis = q.get("distractor_analysis", {})
+    close_options = q.get("close_options", [])
+    close_vs_correct = q.get("close_vs_correct", "")
+
+    # Main explanation
+    st.markdown(f"**Why {correct_ans} is correct:**")
+    st.info(explanation)
+
+    # Close distractor callout
+    if close_options and close_vs_correct:
+        close_labels = " and ".join(close_options)
+        st.markdown(f"**Close distractor{'s' if len(close_options) > 1 else ''}: {close_labels}**")
+        st.warning(f"⚠️ {close_vs_correct}")
+
+    # Per-option breakdown
+    if distractor_analysis:
+        st.markdown("---")
+        st.markdown("**Option-by-option analysis:**")
+
+        for opt_letter, analysis in distractor_analysis.items():
+            opt_letter = opt_letter.strip()
+            is_close = opt_letter in close_options
+            is_chosen = opt_letter == user_ans and user_ans != correct_ans
+
+            icon = "🎯 " if is_close else ""
+            chosen_tag = " ← your answer" if is_chosen else ""
+            mistake_cat = analysis.get("mistake_category", "")
+            color_icon = MISTAKE_CATEGORY_COLORS.get(mistake_cat, "⚪")
+
+            with st.expander(
+                f"{icon}Option {opt_letter}{chosen_tag} — {color_icon} {mistake_cat}",
+                expanded=is_chosen or is_close,
+            ):
+                st.markdown(f"**Why this is wrong here:**")
+                st.markdown(analysis.get("why_wrong", ""))
+
+                st.markdown(f"**When {opt_letter} would be the right answer:**")
+                st.markdown(f"_{analysis.get('when_correct', '')}_")
+
+    # Learn More chat
+    st.markdown("---")
+    _render_learn_more_chat(q, current)
+
+
+def _render_learn_more_chat(q: dict, q_index: int):
+    """Render a question-scoped chat that stays anchored to this question's concepts."""
+    chat_key = f"qt_learn_more_history"
+    all_histories = st.session_state.get(chat_key, {})
+    history = all_histories.get(q_index, [])
+
+    with st.expander("💬 Learn More — chat about this question", expanded=False):
+        st.caption(
+            "Ask anything about this question's concepts, why options are right/wrong, "
+            "or how to apply this pattern in production. Chat stays focused on this question."
+        )
+
+        # Display chat history
+        for msg in history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Input
+        user_input = st.chat_input(
+            "Ask about this question…",
+            key=f"learn_more_input_{q_index}",
+        )
+
+        if user_input:
+            history.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            with st.chat_message("assistant"):
+                response_placeholder = st.empty()
+                full_response = ""
+                with stream_question_chat(q, history[:-1], user_input) as stream:
+                    for text in stream.text_stream:
+                        full_response += text
+                        response_placeholder.markdown(full_response + "▌")
+                response_placeholder.markdown(full_response)
+
+            history.append({"role": "assistant", "content": full_response})
+            all_histories[q_index] = history
+            st.session_state[chat_key] = all_histories
+
+
 if not finished:
-    # Show one question at a time
     st.markdown(f"**Question {current + 1} of {total}** — {cat}")
     elapsed = int(time.time() - st.session_state.get("qt_start_time", time.time()))
     st.caption(f"Time elapsed: {elapsed // 60}m {elapsed % 60}s")
 
     q = questions[current]
+
+    # Source badge
+    if q.get("source") == "official_sample":
+        st.caption("📋 Official practice exam question")
+
     st.markdown(f"### {q['question']}")
 
     options = q.get("options", [])
@@ -98,9 +226,9 @@ if not finished:
             st.success(f"✅ Correct! The answer is **{correct_ans}**.")
         else:
             st.error(f"❌ Incorrect. The correct answer is **{correct_ans}**.")
-        st.info(f"**Explanation:** {q.get('explanation', '')}")
 
-        # Navigation
+        render_distractor_analysis(q, user_ans)
+
         col_prev, col_next = st.columns(2)
         with col_prev:
             if current > 0:
@@ -118,7 +246,6 @@ if not finished:
                     st.rerun()
 
 else:
-    # Results
     elapsed = int(time.time() - st.session_state.get("qt_start_time", time.time()))
     score = sum(1 for i, q in enumerate(questions) if answers.get(i) == q.get("answer"))
 
@@ -133,11 +260,11 @@ else:
         st.metric("Time", f"{elapsed // 60}m {elapsed % 60}s")
 
     if pct >= 75:
-        st.success("🎉 Great job! You passed this category.")
+        st.success("Great job! You passed this category.")
     elif pct >= 50:
-        st.warning("📚 Good effort. Keep reviewing this category.")
+        st.warning("Good effort. Keep reviewing this category.")
     else:
-        st.error("🔴 Needs more work. Review the gotcha topics for this category.")
+        st.error("Needs more work. Review the gotcha topics for this category.")
 
     if not st.session_state.get("qt_score_saved"):
         save_result(cat, score, total, "quick")
@@ -150,12 +277,13 @@ else:
         user_ans = answers.get(i, "—")
         correct_ans = q.get("answer", "")
         icon = "✅" if user_ans == correct_ans else "❌"
-        with st.expander(f"{icon} Q{i+1}: {q['question'][:80]}…"):
-            st.markdown(f"**Your answer:** {user_ans}")
-            st.markdown(f"**Correct answer:** {correct_ans}")
+        with st.expander(f"{icon} Q{i+1}: {q['question'][:90]}…"):
+            st.markdown(f"**Your answer:** {user_ans} | **Correct answer:** {correct_ans}")
             for opt in q.get("options", []):
-                st.markdown(f"- {opt}")
-            st.info(f"**Explanation:** {q.get('explanation', '')}")
+                marker = " ✓" if opt.startswith(correct_ans) else (" ✗" if opt.startswith(user_ans) and user_ans != correct_ans else "")
+                st.markdown(f"- {opt}{marker}")
+            st.divider()
+            render_distractor_analysis(q, user_ans)
 
     if st.button("New Quiz", type="primary"):
         reset_quiz()

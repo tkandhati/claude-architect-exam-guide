@@ -1,0 +1,497 @@
+[
+  {
+    "id": "sq_001",
+    "source": "official_sample",
+    "question": "In testing, you notice the agent frequently calls `get_customer` when users ask about order status, even though `lookup_order` would be more appropriate. What should you examine first to address this issue?",
+    "options": [
+      "A. Reduce the number of tools available to the agent to simplify selection",
+      "B. Add few-shot examples covering every possible order-related query pattern to the system prompt",
+      "C. Review tool descriptions to ensure they clearly distinguish each tool's purpose",
+      "D. Implement a pre-processing classifier that detects order queries and routes directly to `lookup_order`"
+    ],
+    "answer": "C",
+    "category": "Tool Design & MCP Integration",
+    "explanation": "C is correct because tool selection failures almost always trace back to ambiguous or overlapping tool descriptions. Claude chooses tools based on their name and description — if `get_customer` and `lookup_order` have descriptions that both mention customers and orders, Claude cannot reliably distinguish them. Fixing the descriptions is the root-cause fix, not a workaround.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Reducing tool count treats the symptom (too many options) rather than the cause (poor descriptions). You'd lose legitimate functionality and the same ambiguity problem would resurface with the remaining tools.",
+        "when_correct": "Reducing tool count is valid when an agent genuinely has too many tools (10+) causing selection degradation, but only after descriptions are already clear and distinct.",
+        "mistake_category": "Surface-Level Fix"
+      },
+      "B": {
+        "why_wrong": "Few-shot examples can help, but adding examples for every possible query pattern before diagnosing why selection fails is premature. If the descriptions still overlap, examples only patch specific patterns without fixing the underlying ambiguity.",
+        "when_correct": "Few-shot examples are the right next step *after* tool descriptions are clear — they reinforce correct selection for edge cases, not as a substitute for clear descriptions.",
+        "mistake_category": "Correct Direction, Wrong Order"
+      },
+      "D": {
+        "why_wrong": "A pre-processing classifier adds infrastructure complexity without addressing the real problem. It also bypasses Claude's natural tool selection, creating a fragile routing layer that must be maintained separately.",
+        "when_correct": "External classifiers are justified when you have fundamentally different workflows requiring completely separate agent paths — not for distinguishing two closely related tools.",
+        "mistake_category": "Over-Engineering"
+      }
+    },
+    "close_options": ["B"],
+    "close_vs_correct": "B (few-shot examples) is the closest distractor because it does improve tool selection — but it treats the symptom. C (fix descriptions) is preferred first because it corrects the root cause. If you pick B before C, you'll be writing examples that compensate for bad descriptions indefinitely."
+  },
+  {
+    "id": "sq_002",
+    "source": "official_sample",
+    "question": "Your CI pipeline includes two Claude-powered code review modes: a `pre-merge-commit` hook that blocks PR merging until complete, and 'deep analysis' that runs overnight, polls for batch completion, then posts detailed suggestions to the PR. You want to reduce API costs using the Message Batches API, which offers 50% cost savings but requires polling and may take up to 24 hours to complete. Which mode should use batch processing?",
+    "options": [
+      "A. Both modes",
+      "B. Neither mode",
+      "C. Deep analysis only",
+      "D. Pre-merge-commit hook only"
+    ],
+    "answer": "C",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "C is correct because the Message Batches API is only suitable when latency is acceptable. Deep analysis already runs overnight and polls for completion — the 24-hour batch window fits perfectly. The `pre-merge-commit` hook *blocks PR merging*, meaning developers are waiting on it; a 24-hour delay would make the pipeline unusable.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Applying batch processing to the pre-merge hook would block PRs for up to 24 hours, making the CI pipeline non-functional for development teams.",
+        "when_correct": "Both modes could use batch if neither were blocking — e.g., if both were async notification-only workflows with no gates on developer progress.",
+        "mistake_category": "Ignoring Constraint"
+      },
+      "B": {
+        "why_wrong": "Rejecting batch entirely for both modes forgoes a legitimate 50% cost saving on the deep analysis workflow, which is already designed for async execution.",
+        "when_correct": "Neither mode should use batch only if both had real-time latency requirements — which deep analysis explicitly does not.",
+        "mistake_category": "Overly Conservative"
+      },
+      "D": {
+        "why_wrong": "The pre-merge hook is the one mode that cannot tolerate batch latency — it directly blocks developer workflow. Applying batch here inverts the correct answer.",
+        "when_correct": "Pre-merge could use batch if it were redesigned to be non-blocking (e.g., a suggestion-only mode that doesn't gate merges).",
+        "mistake_category": "Misread Constraint"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A (both modes) is tempting because the question frames cost savings as desirable. The distinguishing constraint is that batch latency is only acceptable when the workflow is already async and non-blocking. Deep analysis passes that test; the pre-merge hook fails it."
+  },
+  {
+    "id": "sq_003",
+    "source": "official_sample",
+    "question": "Your pipeline script runs `claude \"Analyze this pull request for security issues\"` but the job hangs indefinitely. Logs indicate Claude Code is waiting for interactive input. What's the correct approach to run Claude Code in an automated pipeline?",
+    "options": [
+      "A. Redirect stdin from /dev/null: `claude \"Analyze this pull request for security issues\" < /dev/null`",
+      "B. Set the environment variable `CLAUDE_HEADLESS=true` before running the command",
+      "C. Add the `-p` flag: `claude -p \"Analyze this pull request for security issues\"`",
+      "D. Add the `--batch` flag: `claude --batch \"Analyze this pull request for security issues\"`"
+    ],
+    "answer": "C",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "C is correct. The `-p` (print/non-interactive) flag is the official Claude Code mechanism for CI/pipeline usage. It disables the interactive REPL mode, runs the prompt, outputs the result to stdout, and exits. This is the documented pattern for automation.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Redirecting stdin from /dev/null prevents keyboard input but doesn't signal to Claude Code that it should run in non-interactive mode. The process may still block waiting for other interactive signals or prompts.",
+        "when_correct": "stdin redirection is a valid Unix technique when a program reads from stdin and you want to simulate EOF — but Claude Code's interactive mode is triggered by TTY detection and session logic, not just stdin availability.",
+        "mistake_category": "Wrong Layer — OS-level fix for an application-level mode"
+      },
+      "B": {
+        "why_wrong": "`CLAUDE_HEADLESS=true` is not a real Claude Code environment variable. This option sounds plausible but is fabricated.",
+        "when_correct": "Never — this variable does not exist in Claude Code's documented configuration.",
+        "mistake_category": "Non-Existent Feature"
+      },
+      "D": {
+        "why_wrong": "`--batch` is not a Claude Code CLI flag. Candidates familiar with the Message Batches API might assume this exists, but it does not apply to the CLI.",
+        "when_correct": "Never for the CLI — the Message Batches API is an Anthropic API feature, not a Claude Code command-line flag.",
+        "mistake_category": "API Concept Misapplied to CLI"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A (stdin redirect) is the closest distractor because it's a real Unix technique that works for many interactive programs. The key distinction: Claude Code's non-interactive mode is controlled by the `-p` flag, not stdin. Many candidates with Unix experience default to A."
+  },
+  {
+    "id": "sq_004",
+    "source": "official_sample",
+    "question": "You're implementing the agentic loop for your support agent. After each API call to Claude, you need to determine whether to continue the loop (execute the requested tools and call Claude again) or stop (return the final response to the customer). What determines this decision?",
+    "options": [
+      "A. Check whether Claude's response includes any tool call content blocks — if none exist, the loop should end",
+      "B. Parse Claude's response for phrases like 'task completed' or 'is there anything else' — these natural language signals indicate the task is finished",
+      "C. Set a maximum iteration count (e.g., 10 calls) and stop when reached, regardless of whether Claude indicates more work is needed",
+      "D. Check the `stop_reason` field in Claude's response — continue when it equals `tool_use`, and stop when it equals `end_turn`"
+    ],
+    "answer": "D",
+    "category": "Agentic Architecture & Orchestration",
+    "explanation": "D is correct. The `stop_reason` field is the authoritative, structured API signal for loop control. `tool_use` means Claude has requested tool execution and expects to continue; `end_turn` means Claude has finished its response. This is deterministic and immune to variations in Claude's language output.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Checking for the absence of tool call content blocks is close but not reliable — Claude can stop_reason as `end_turn` while still having text content blocks. The correct check is the `stop_reason` field, not content block type.",
+        "when_correct": "Checking content block types is useful for deciding *what action to take* after confirming stop_reason is `tool_use`, not for deciding *whether to continue*.",
+        "mistake_category": "Correct Signal Source, Wrong Field"
+      },
+      "B": {
+        "why_wrong": "Natural language parsing for loop control is fundamentally unreliable. Claude's phrasing varies, can be ambiguous, and may include completeness language mid-task. This is the canonical anti-pattern the exam tests.",
+        "when_correct": "Natural language interpretation is appropriate for *user-facing* decisions (like understanding what the customer wants) — never for programmatic loop control.",
+        "mistake_category": "Probabilistic Where Deterministic Is Required"
+      },
+      "C": {
+        "why_wrong": "A hard iteration cap is a *safety guardrail*, not the primary loop control mechanism. Stopping at 10 regardless of task state will silently cut off legitimate multi-step tasks.",
+        "when_correct": "Maximum iteration counts should exist as a *secondary* safety limit alongside `stop_reason` checks — never as the sole termination condition.",
+        "mistake_category": "Safety Guardrail Misused as Primary Control"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A is the closest wrong answer because it's inspecting the API response structure (correct approach) but at the wrong level — content blocks vs. the top-level `stop_reason` field. D is preferred because `stop_reason` is a dedicated, unambiguous field for exactly this purpose."
+  },
+  {
+    "id": "sq_005",
+    "source": "official_sample",
+    "question": "Production data shows that in 12% of cases, your agent skips `get_customer` entirely and calls `lookup_order` using only the customer's stated name, leading to misidentified accounts and incorrect refunds. Which change would most effectively address this reliability issue?",
+    "options": [
+      "A. Add a programmatic prerequisite that blocks `lookup_order` calls until `get_customer` has returned a verified customer ID",
+      "B. Implement a routing classifier that analyzes each request and enables only the subset of tools appropriate for that request type",
+      "C. Enhance the system prompt to state that customer verification via `get_customer` is mandatory before any order operations",
+      "D. Add few-shot examples showing the agent always calling `get_customer` first, even when customers volunteer order details"
+    ],
+    "answer": "A",
+    "category": "Agentic Architecture & Orchestration",
+    "explanation": "A is correct. The consequence here is financial (incorrect refunds) and occurs 12% of the time despite presumably having instructions. When a rule must hold 100% of the time and violations have financial impact, programmatic enforcement is required. A prerequisite hook that structurally prevents `lookup_order` from being called without a verified customer ID makes the unsafe path impossible — it cannot be bypassed by prompt variations.",
+    "distractor_analysis": {
+      "C": {
+        "why_wrong": "System prompt instructions are probabilistic — they improve compliance but cannot guarantee it. The 12% failure rate likely already exists despite some prompt guidance. Adding stronger prompt language will not eliminate violations for a financial-impact rule.",
+        "when_correct": "Prompt-based guidance is appropriate when the cost of occasional non-compliance is low and the rule is advisory (e.g., 'prefer detailed responses'). It is never appropriate for financial safety rules.",
+        "mistake_category": "Prompt-over-Structure Fallacy"
+      },
+      "D": {
+        "why_wrong": "Few-shot examples improve average-case behavior but cannot enforce a rule for all inputs. A customer providing their order number upfront creates natural pressure for Claude to skip verification — examples alone won't override that.",
+        "when_correct": "Few-shot examples work well to shape ordering preferences for ambiguous multi-step tasks where enforcement is not critical.",
+        "mistake_category": "Probabilistic Enforcement for Deterministic Requirement"
+      },
+      "B": {
+        "why_wrong": "A routing classifier adds architectural complexity and creates a new failure mode: the classifier itself might route incorrectly. It solves the wrong problem — the issue isn't which tools are available, it's the ordering constraint between them.",
+        "when_correct": "Routing classifiers are appropriate for directing users to fundamentally different workflows (e.g., billing vs. technical support), not for enforcing tool call sequences within a single workflow.",
+        "mistake_category": "Over-Engineering — Wrong Problem"
+      }
+    },
+    "close_options": ["C", "D"],
+    "close_vs_correct": "C (enhanced system prompt) and D (few-shot examples) are both close distractors because they would improve the average case and are cheaper to implement. The critical distinction is the financial consequence and the 12% failure rate — these facts signal that probabilistic improvement is insufficient and structural enforcement is required."
+  },
+  {
+    "id": "sq_006",
+    "source": "official_sample",
+    "question": "Your support agent uses progressive summarization — when context reaches 70% capacity, older turns are summarized and recent ones are preserved. Production logs reveal customers sometimes reference specific promotional amounts ('the $10 discount you mentioned') that summarization turns into vague phrases like 'discussed promotional pricing'. What's the most effective fix?",
+    "options": [
+      "A. Store full conversation history externally and retrieve it when the agent detects reference phrases like '$10 discount'",
+      "B. Extract transactional facts (amounts, dates, order IDs, commitments) into a persistent 'case facts' block that is included verbatim in every summary, separate from the summarized history",
+      "C. Update the summarization prompt to explicitly preserve all numerical values, percentages, dates, and customer expectations verbatim",
+      "D. Increase the summarization threshold from 70% to 80% so conversations have more room before summarization triggers"
+    ],
+    "answer": "B",
+    "category": "Context Management & Reliability",
+    "explanation": "B is correct. The root cause is that summarization inherently loses precision for exact values. The fix is architectural: extract high-precision transactional facts into a structured block that bypasses summarization entirely. This block travels through every context window as-is, making specific values immune to summarization loss.",
+    "distractor_analysis": {
+      "C": {
+        "why_wrong": "Instructing the summarization prompt to preserve specific values is probabilistic — summarization is generative and will occasionally paraphrase or omit specific figures despite instructions. It addresses the symptom in the summary prompt, not the structural data loss problem.",
+        "when_correct": "Strengthening summarization instructions is a valid incremental improvement when the data types involved are inherently narrative (tone, context, preferences) and exact precision isn't critical.",
+        "mistake_category": "Prompt-over-Structure Fallacy"
+      },
+      "D": {
+        "why_wrong": "Delaying summarization only postpones the problem — it does not prevent precision loss when summarization eventually occurs. At 80% threshold, the same issue recurs for longer conversations.",
+        "when_correct": "Adjusting the summarization threshold is appropriate when the goal is balancing recency vs. coverage, not when the goal is preserving specific transactional precision.",
+        "mistake_category": "Delay Not Fix"
+      },
+      "A": {
+        "why_wrong": "Retrieving full history on-demand based on detected reference phrases adds significant complexity, requires detecting when retrieval is needed (which is error-prone), and reintroduces context window pressure. It solves a narrow case while missing the general preservation need.",
+        "when_correct": "External retrieval is appropriate for completely reconstructing long-dormant sessions or cross-session data continuity — not as the primary mechanism for preserving within-session transactional precision.",
+        "mistake_category": "Over-Engineering"
+      }
+    },
+    "close_options": ["C"],
+    "close_vs_correct": "C (update summarization prompt) is the most tempting distractor because it seems to directly target the symptom. B is preferred because it removes transactional facts from the summarization path entirely — a structural guarantee vs. a probabilistic instruction."
+  },
+  {
+    "id": "sq_007",
+    "source": "official_sample",
+    "question": "You've asked Claude to transform API responses into a normalized internal format. After two iterations, the output structure still doesn't match expectations — some fields are nested differently and timestamps are inconsistently formatted. You've been describing requirements in text. What's the most effective approach for the next iteration?",
+    "options": [
+      "A. Write a JSON schema defining the expected output structure and validate Claude's output against it after each iteration",
+      "B. Ask Claude to explain its current interpretation of the requirements so you can identify where understanding diverges",
+      "C. Rewrite your requirements with greater technical precision, specifying exact field mappings, nesting rules, and format strings",
+      "D. Provide 2-3 concrete input-output examples showing the full transformation for representative API responses"
+    ],
+    "answer": "D",
+    "category": "Prompt Engineering & Structured Output",
+    "explanation": "D is correct. After two failed text-description iterations, continuing with text is the wrong strategy. Concrete input-output examples sidestep the ambiguity of written rules entirely — Claude can infer the exact mapping, nesting, and formatting from examples far more reliably than from prose descriptions, even precise ones.",
+    "distractor_analysis": {
+      "C": {
+        "why_wrong": "Two iterations have already failed using text. Writing more precise text is the same approach with more effort — if Claude's interpretation of the requirements diverges from yours, better-worded prose will still diverge. Examples break this loop.",
+        "when_correct": "Precise written specs work well for constraints that are hard to demonstrate by example (e.g., 'never include null fields', 'truncate strings at 255 characters') — as a supplement to examples, not a replacement.",
+        "mistake_category": "Repeating Failed Strategy"
+      },
+      "A": {
+        "why_wrong": "JSON schema validation is a post-generation enforcement mechanism, not a communication mechanism. It tells you when Claude fails but doesn't help Claude understand what you want. Validation without better input guidance will produce repeated failures.",
+        "when_correct": "JSON schema is the right enforcement layer *after* Claude is producing roughly correct output — combined with a retry loop for format violations. It cannot substitute for clear specification.",
+        "mistake_category": "Enforcement Without Guidance"
+      },
+      "B": {
+        "why_wrong": "Asking Claude to explain its interpretation is a useful diagnostic but not a solution. It identifies the gap but requires you to then write better instructions — which brings you back to the prose vs. example choice.",
+        "when_correct": "Asking for interpretation is a valid debugging step early in a conversation or when you suspect a fundamental misunderstanding — not as the primary corrective action after two formatting failures.",
+        "mistake_category": "Diagnosis Without Treatment"
+      }
+    },
+    "close_options": ["C"],
+    "close_vs_correct": "C (rewrite with more precision) is the closest distractor because precision does matter for structured output. But after two failures, the mechanism is wrong — examples communicate structure unambiguously where text cannot, regardless of how precise the text is."
+  },
+  {
+    "id": "sq_008",
+    "source": "official_sample",
+    "question": "Your team has been using Claude Code for several months. Recently, three developers report that Claude doesn't always follow the 'always include comprehensive error handling' guideline. A fourth developer who just joined reports Claude follows it perfectly. All developers are working in the same repository with the latest code. What's the most likely explanation?",
+    "options": [
+      "A. The new developer's local configuration overrides the project CLAUDE.md, resolving the conflict in their favor",
+      "B. The guideline exists in the original developers' user-level CLAUDE.md files (~/.claude/CLAUDE.md) rather than the project CLAUDE.md — the new developer doesn't have that user file",
+      "C. Claude builds per-user preference models over time through repeated interactions. The new developer needs to repeatedly specify the requirement until Claude learns their preferences",
+      "D. Claude caches CLAUDE.md and doesn't refresh after first read. The original developers have a stale cached version"
+    ],
+    "answer": "B",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "B is correct. Claude Code loads configuration from multiple CLAUDE.md files in a hierarchy: user-level (~/.claude/CLAUDE.md) and project-level. If the guideline was written in the original developers' user-level files (not the project file), new teammates never receive it. The new developer gets consistent behavior precisely *because* they lack the user-level file and rely only on the project file.",
+    "distractor_analysis": {
+      "C": {
+        "why_wrong": "Claude Code does not maintain per-user learning or preference models. Each session starts fresh from CLAUDE.md files and conversation context. There is no persistent model adaptation based on repeated interactions with specific users.",
+        "when_correct": "Never — this describes a feature that doesn't exist in Claude Code.",
+        "mistake_category": "Non-Existent Feature"
+      },
+      "D": {
+        "why_wrong": "Claude Code reads CLAUDE.md files at the start of each session, not once globally. Caching behavior like this doesn't exist — every new Claude Code session loads fresh configuration.",
+        "when_correct": "Never — Claude Code re-reads CLAUDE.md on every session start.",
+        "mistake_category": "Non-Existent Behavior"
+      },
+      "A": {
+        "why_wrong": "The scenario states the new developer experiences *correct* behavior, not different behavior. A local override would change their experience, not guarantee alignment with the team standard.",
+        "when_correct": "Local configuration overrides are real (settings.local.json) but are used for personal preferences like model selection or API key — not as a fix for missing shared guidelines.",
+        "mistake_category": "Inverted Causal Direction"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A is the closest distractor because it correctly identifies that configuration hierarchy exists and that different developers can have different effective configurations. B is the precise explanation: the location of the guideline (user vs. project level) determines which developers receive it."
+  },
+  {
+    "id": "sq_009",
+    "source": "official_sample",
+    "question": "You've been assigned to restructure the team's monolithic application into microservices. This will involve changes across dozens of files and requires decisions about service boundaries and module dependencies. Which approach should you take?",
+    "options": [
+      "A. Use plan mode to explore the codebase, understand dependencies, and design an implementation approach before making changes",
+      "B. Start with direct execution and make changes incrementally, letting the implementation reveal the natural service boundaries",
+      "C. Begin in direct execution mode and only switch to plan mode if you encounter unexpected complexity during implementation",
+      "D. Use direct execution with comprehensive upfront instructions detailing exactly how each service should be structured"
+    ],
+    "answer": "A",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "A is correct. Microservice decomposition is an architectural task requiring upfront understanding of dependencies and boundaries before any file changes. Plan mode allows exploration and design without committing changes — critical when the decomposition strategy will affect dozens of files. Diving straight into execution risks making cascading changes based on incomplete dependency understanding.",
+    "distractor_analysis": {
+      "B": {
+        "why_wrong": "Incremental execution without a plan risks making changes that look locally correct but create global inconsistencies — e.g., splitting a module before discovering it has circular dependencies with another module you haven't split yet.",
+        "when_correct": "Incremental execution is ideal for well-understood tasks with limited scope — bug fixes, adding isolated features, or refactoring a single file. Not for cross-cutting architectural changes.",
+        "mistake_category": "Wrong Mode for Scope"
+      },
+      "C": {
+        "why_wrong": "Waiting until complexity appears before switching to plan mode means you've already started making changes under an incomplete model. Undoing cascading architectural changes mid-execution is expensive.",
+        "when_correct": "Starting in execution and switching to plan mode makes sense for tasks that start simple but may expand — when the complexity is genuinely uncertain. Microservice decomposition complexity is not uncertain; it's guaranteed.",
+        "mistake_category": "Reactive Instead of Proactive"
+      },
+      "D": {
+        "why_wrong": "Writing comprehensive upfront execution instructions assumes you already understand the full dependency graph — which requires the exploration that plan mode provides. Without exploration, the instructions will have gaps.",
+        "when_correct": "Comprehensive upfront instructions work when the task is fully specified (e.g., 'implement these exact API endpoints following this spec') — not when discovery is required.",
+        "mistake_category": "Skipping Discovery Phase"
+      }
+    },
+    "close_options": ["C"],
+    "close_vs_correct": "C is the closest distractor because it acknowledges plan mode's value and just delays it. The key insight: the complexity in microservice decomposition is not 'unexpected' — it's inherent and known upfront. Using plan mode proactively, not reactively, is the correct signal."
+  },
+  {
+    "id": "sq_010",
+    "source": "official_sample",
+    "question": "Your agent achieves 55% first-contact resolution, well below the 80% target. Logs show the agent frequently handles straightforward cases (standard damage replacements with photo evidence) autonomously but attempts to autonomously handle complex cases (policy exceptions, multi-factor eligibility) where it lacks authority. What's the most effective improvement?",
+    "options": [
+      "A. Deploy a separate classifier model trained on historical data to predict escalation need before the agent begins processing",
+      "B. Have the agent report a self-assessed confidence score and automatically route to humans below a threshold",
+      "C. Implement sentiment analysis to detect customer frustration and automatically escalate when negative sentiment exceeds a threshold",
+      "D. Add explicit escalation criteria to the system prompt with few-shot examples distinguishing straightforward cases from cases requiring human authority"
+    ],
+    "answer": "D",
+    "category": "Agentic Architecture & Orchestration",
+    "explanation": "D is correct. The root cause is that the agent cannot distinguish cases within its authority from cases that require escalation. Explicit criteria with few-shot examples directly teaches this distinction — it's the most targeted, lowest-complexity fix. The examples make the boundary concrete rather than relying on the agent's general judgment.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "A separate classifier adds architectural complexity and requires training data for a problem that can be solved by improving the existing agent's context. It also introduces a new failure point and deployment dependency.",
+        "when_correct": "A separate escalation classifier is justified when the agent itself lacks the context to make the decision — e.g., when escalation depends on account history not visible to the agent. Here, the agent has all necessary context.",
+        "mistake_category": "Over-Engineering"
+      },
+      "B": {
+        "why_wrong": "Self-reported confidence scores are unreliable — models are often overconfident on the cases they get wrong. Routing based on Claude's self-assessment delegates the escalation decision to the exact mechanism that's failing.",
+        "when_correct": "Confidence thresholds can work as a supplementary signal when combined with explicit criteria, not as the primary routing mechanism.",
+        "mistake_category": "Delegating Decision to Failing Component"
+      },
+      "C": {
+        "why_wrong": "Sentiment analysis detects customer frustration *after* a bad outcome, not *before* the agent makes an incorrect autonomous decision. It's a lagging signal that escalates too late.",
+        "when_correct": "Sentiment-based escalation is appropriate as a *secondary* trigger for cases where a frustrated customer needs a human touch — not as the primary mechanism for capability-boundary enforcement.",
+        "mistake_category": "Lagging Signal for Proactive Decision"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A (separate classifier) is the closest distractor because it correctly identifies that escalation requires a routing decision. D is preferred because the decision criteria are already knowable from the task description — they don't require a trained model, just clear specification of the boundary."
+  },
+  {
+    "id": "sq_011",
+    "source": "official_sample",
+    "question": "Your team's CLAUDE.md has grown to over 500 lines, mixing TypeScript conventions, testing guidelines, AI patterns, and deployment procedures. Developers find it difficult to locate and update relevant sections. What approach best organizes project-level instructions into focused, topic-specific documents?",
+    "options": [
+      "A. Create separate markdown files in `.claude/` each covering one topic, then add `@import` directives in CLAUDE.md to include them",
+      "B. Split instructions into README.md files in each relevant subdirectory, which Claude automatically loads as context",
+      "C. Define a mapping configuration file that routes file-pattern-specific instructions to focused guideline sections",
+      "D. Create CLAUDE.md files at different levels of the directory tree — a root CLAUDE.md for shared principles and subdirectory CLAUDE.md files for area-specific conventions"
+    ],
+    "answer": "D",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "D is correct. Claude Code natively supports hierarchical CLAUDE.md files — root-level for shared principles and subdirectory-level for scoped conventions. This is the official, built-in mechanism for organizing project instructions without configuration overhead. Each CLAUDE.md is automatically loaded when Claude operates in that directory context.",
+    "distractor_analysis": {
+      "B": {
+        "why_wrong": "README.md files are not automatically loaded by Claude Code as instructions. Only files named CLAUDE.md (or explicitly referenced) are loaded. Using README.md for instructions would silently fail.",
+        "when_correct": "README.md is appropriate for human-readable documentation that developers read manually — not for Claude Code configuration.",
+        "mistake_category": "Wrong File Convention"
+      },
+      "A": {
+        "why_wrong": "`@import` directives in CLAUDE.md are not a supported Claude Code feature. This option describes a mechanism that doesn't exist.",
+        "when_correct": "Never — this syntax is not part of Claude Code's CLAUDE.md specification.",
+        "mistake_category": "Non-Existent Feature"
+      },
+      "C": {
+        "why_wrong": "A separate mapping configuration file adds complexity and indirection where the native CLAUDE.md hierarchy already provides the solution. Creating additional configuration to route instructions to sections is unnecessary overhead.",
+        "when_correct": "Custom routing configuration might make sense in frameworks with no native hierarchy support — not in Claude Code, which has built-in hierarchical loading.",
+        "mistake_category": "Reinventing Built-In Feature"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A (separate files with imports) is the closest distractor because it correctly identifies the need to split instructions into multiple focused files. D is better because hierarchical CLAUDE.md files achieve this natively — no import syntax needed, just place them in the right directories."
+  },
+  {
+    "id": "sq_012",
+    "source": "official_sample",
+    "question": "Production metrics show that when your agent resolves cases involving billing issues, it takes an average of 4+ API calls to Claude. Analysis reveals Claude frequently requests `get_customer` and `lookup_order` in separate sequential turns even when both are needed upfront. What's the most effective way to reduce API calls?",
+    "options": [
+      "A. Batch tool requests — instruct Claude to request all needed tools in a single turn rather than one at a time",
+      "B. Create composite tools like `get_customer_with_orders` that bundle common lookup combinations into single calls",
+      "C. Implement speculative execution that automatically calls likely-needed tools alongside any requested tool",
+      "D. Increase `max_tokens` to give Claude more space to plan its tool call strategy before executing"
+    ],
+    "answer": "A",
+    "category": "Agentic Architecture & Orchestration",
+    "explanation": "A is correct. When multiple tools are independent (don't depend on each other's results), Claude can and should request them in parallel in a single turn. Instructing Claude to batch parallel tool requests — and ensuring the system prompt or few-shot examples demonstrate this pattern — is the direct, low-overhead fix.",
+    "distractor_analysis": {
+      "B": {
+        "why_wrong": "Composite tools solve the problem for specific combinations but create maintenance overhead for every new combination. They don't teach Claude to think in parallel — they just reduce calls for one hardcoded case while leaving others unchanged.",
+        "when_correct": "Composite tools are valuable when a combination is extremely common (>80% of cases) AND the individual tools are never used independently. Otherwise, parallel batching is more flexible.",
+        "mistake_category": "Overly Specific Solution"
+      },
+      "C": {
+        "why_wrong": "Speculative execution (proactively calling tools Claude didn't request) wastes API calls when predictions are wrong and may retrieve sensitive data unnecessarily. It solves the symptom by adding calls rather than removing unnecessary sequential ones.",
+        "when_correct": "Speculative prefetching is justified in specific scenarios where latency is more critical than cost and prediction accuracy is very high — not as a general strategy for reducing API calls.",
+        "mistake_category": "Adds Calls Instead of Removing Them"
+      },
+      "D": {
+        "why_wrong": "More output tokens doesn't change Claude's tool-calling strategy — it changes how much text Claude generates. The sequential tool-calling pattern is driven by the prompt and examples, not token limits.",
+        "when_correct": "Increasing max_tokens is appropriate when Claude's responses are getting cut off or when complex reasoning chains need more space — not for changing tool call parallelism.",
+        "mistake_category": "Wrong Lever"
+      }
+    },
+    "close_options": ["B"],
+    "close_vs_correct": "B (composite tools) is the closest distractor because it does reduce API calls in practice. A is preferred because it teaches Claude the general parallel batching pattern, applicable to all tool combinations — not just the ones you hardcode into composite tools."
+  },
+  {
+    "id": "sq_013",
+    "source": "official_sample",
+    "question": "Your automated code review runs after each commit. When reviewing a PR that adds course completion tracking, Claude suggests 10 test cases but developer feedback indicates 6 of the 10 describe scenarios already covered by existing tests. What's the most effective approach to eliminate redundant suggestions?",
+    "options": [
+      "A. Add instructions directing Claude to focus exclusively on edge cases and error conditions rather than happy-path scenarios",
+      "B. Reduce the requested suggestion count from 10 to 4, assuming fewer suggestions will naturally target the most valuable gaps",
+      "C. Include the existing test file in the context so Claude can identify which scenarios are already covered",
+      "D. Implement post-processing that filters suggestions whose descriptions contain keywords from existing test names"
+    ],
+    "answer": "C",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "C is correct. Claude is suggesting redundant tests because it lacks visibility into what already exists. Providing the existing test file gives Claude the information needed to reason about coverage gaps directly. This is a context completeness fix — the model has the right capability but the wrong input.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Restricting Claude to edge cases doesn't address the root cause — Claude doesn't know which happy-path tests already exist. It would shift suggestions toward edge cases but could still duplicate existing edge case tests.",
+        "when_correct": "Focusing on edge cases is a valid prompt refinement for maturing test suites where basic coverage already exists — but only if Claude can see what already exists.",
+        "mistake_category": "Narrow Fix for a Context Problem"
+      },
+      "B": {
+        "why_wrong": "Reducing count doesn't guarantee the 4 remaining suggestions are non-redundant — they might be the 4 most obvious (already-covered) ones. Count is a quantity control, not a quality or coverage control.",
+        "when_correct": "Reducing suggestion count is reasonable as a final calibration after coverage-awareness is in place — not as the primary fix for redundancy.",
+        "mistake_category": "Quantity Control for a Quality Problem"
+      },
+      "D": {
+        "why_wrong": "Keyword matching on test names is brittle — test names may use different terminology than suggestions, causing false positives (filtering valid suggestions) and false negatives (missing actual duplicates). It's an approximation of what providing the file directly achieves exactly.",
+        "when_correct": "Post-processing keyword filtering makes sense when including the full test file in context is not feasible due to size constraints — as a fallback, not a primary solution.",
+        "mistake_category": "Approximation When Exact Solution Is Available"
+      }
+    },
+    "close_options": ["D"],
+    "close_vs_correct": "D (keyword filtering) is the closest distractor because it correctly identifies that comparison against existing tests is needed. C is superior because it lets Claude perform the comparison with full semantic understanding rather than brittle string matching."
+  },
+  {
+    "id": "sq_014",
+    "source": "official_sample",
+    "question": "Your automated review system analyzes comments and docstrings. The current prompt instructs Claude to 'check that comments are accurate and up-to-date.' Findings frequently flag acceptable patterns (TODO markers, placeholder comments, in-progress notes) while missing substantive issues where code behavior changed but comments weren't updated. What's the root cause and fix?",
+    "options": [
+      "A. Add few-shot training examples to help Claude recognize acceptable comment patterns in your codebase",
+      "B. Include git blame data so Claude can identify comments that predate recent code modifications",
+      "C. Replace the vague guideline with explicit criteria: flag comments only when their claimed behavior contradicts the actual code behavior",
+      "D. Add a pre-filtering step to remove TODO/FIXME comments before sending code to Claude for review"
+    ],
+    "answer": "C",
+    "category": "Prompt Engineering & Structured Output",
+    "explanation": "C is correct. 'Check that comments are accurate and up-to-date' is under-specified — it doesn't distinguish between innocuous TODOs (which are fine) and substantively wrong behavior descriptions (which are bugs). Explicit criteria ('flag only when claimed behavior contradicts actual behavior') removes ambiguity and makes the triggering condition deterministic.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Few-shot examples help Claude recognize patterns but don't fix the vague triggering criterion. Claude would learn which specific examples to allow, but the underlying ambiguity of 'accurate and up-to-date' would still cause inconsistency on unseen patterns.",
+        "when_correct": "Few-shot examples are powerful as a *supplement* to clear criteria — they demonstrate application of the rule, not define the rule itself.",
+        "mistake_category": "Examples Without Criteria"
+      },
+      "B": {
+        "why_wrong": "Git blame helps identify *when* comments were written relative to code changes, which is a useful signal — but the core problem is that Claude doesn't know *what* to look for. Old comments aren't necessarily wrong; new comments can also be wrong from the start.",
+        "when_correct": "Git blame integration is a valuable enhancement for identifying stale comments at scale — as an additional signal once the criteria are clear, not as a substitute for clear criteria.",
+        "mistake_category": "Useful Signal, Wrong Priority"
+      },
+      "D": {
+        "why_wrong": "Pre-filtering TODOs prevents false positives on that specific pattern but leaves all other acceptable comment types unflagged by criteria. It's whack-a-mole — each acceptable pattern needs its own filter rather than one clear rule.",
+        "when_correct": "Pre-filtering specific known-acceptable patterns is a reasonable optimization after clear criteria are in place, to reduce noise from high-volume comment types.",
+        "mistake_category": "Pattern-by-Pattern Fix for a Criteria Problem"
+      }
+    },
+    "close_options": ["B"],
+    "close_vs_correct": "B (git blame) is the closest distractor because it correctly reasons about comment freshness. C is better because the real issue is not when comments were written but whether they describe behavior that conflicts with the current code — a semantic criterion, not a temporal one."
+  },
+  {
+    "id": "sq_015",
+    "source": "official_sample",
+    "question": "You're adding error handling wrappers to external API calls across a large codebase. The work has three phases: (1) discover all API call locations and patterns, (2) design the error handling approach, (3) implement consistently. Your context window fills rapidly during Phase 1 before discovery is complete. What's the most effective approach to complete this while maintaining consistency?",
+    "options": [
+      "A. Define the error handling pattern in CLAUDE.md, then process files across multiple fresh sessions using a Bash script to track which files have been updated",
+      "B. Continue all three phases in one conversation but use /compact to reduce context usage before Phase 1 finishes",
+      "C. Use the Explore subagent for Phase 1 to isolate the discovery context, then continue Phases 2 and 3 in the main conversation with the Explore results",
+      "D. Switch to headless mode and pass explicit context through --files flags across sessions"
+    ],
+    "answer": "C",
+    "category": "Claude Code Configuration & Workflows",
+    "explanation": "C is correct. The Explore subagent runs in an isolated context window, performs the discovery, and returns a summary of findings — without consuming the main conversation's context. The main conversation then receives a compact, high-signal summary and can proceed with design and implementation with full context available.",
+    "distractor_analysis": {
+      "A": {
+        "why_wrong": "Processing files in separate sessions with a tracking script splits the consistency problem across sessions — each session starts without the full picture of patterns found in other sessions. CLAUDE.md can carry the approach but not the discovered patterns across sessions.",
+        "when_correct": "Multi-session file processing with CLAUDE.md is valid for well-defined, atomic tasks (e.g., 'add a logging statement to each of these 50 files') where no cross-file reasoning is needed.",
+        "mistake_category": "Session Split Breaks Cross-File Consistency"
+      },
+      "B": {
+        "why_wrong": "/compact compresses conversation history but Phase 1 (discovery) is the content being compressed — compacting before discovery is complete loses the discoveries you haven't recorded yet. You'd finish with partial discovery results.",
+        "when_correct": "/compact is appropriate for compressing completed phases while preserving their outputs, not for extending an in-progress discovery phase.",
+        "mistake_category": "Compresses Unfinished Work"
+      },
+      "D": {
+        "why_wrong": "Headless mode with --files is for non-interactive pipeline execution, not for managing context across a complex multi-phase exploration task. It doesn't solve the context overflow problem.",
+        "when_correct": "Headless mode is appropriate for CI/CD pipelines running predefined scripts — not for interactive architectural work requiring discovery.",
+        "mistake_category": "Wrong Mode for Task Type"
+      }
+    },
+    "close_options": ["A"],
+    "close_vs_correct": "A (multi-session with script) is the closest because it acknowledges the context limit problem and proposes a practical workaround. C is better because the Explore subagent preserves cross-file consistency — all discovery happens in one logical operation and returns a unified summary, whereas A fragments the work."
+  }
+]

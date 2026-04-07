@@ -1,9 +1,24 @@
 import streamlit as st
 import time
 from utils.prompts import EXAM_CATEGORIES, SIMULATION_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
-from utils.claude_client import get_claude_json, is_api_configured
-from utils.storage import save_result
+from utils.claude_client import get_claude_json, is_api_configured, stream_question_chat
+from utils.storage import save_result, load_sample_questions
 from utils.inspiration import build_inspired_prompt
+
+MISTAKE_CATEGORY_COLORS = {
+    "Prompt-over-Structure Fallacy": "🔴",
+    "Over-Engineering": "🟠",
+    "Correct Direction Wrong Order": "🟡",
+    "Surface-Level Fix": "🟡",
+    "Non-Existent Feature": "⚫",
+    "Wrong Layer": "🟠",
+    "Repeating Failed Strategy": "🔴",
+    "Ignoring Constraint": "🔴",
+    "Misread Constraint": "🟡",
+    "Lagging Signal": "🟠",
+    "Correct Direction, Wrong Order": "🟡",
+    "Correct Direction, Wrong Scope": "🟡",
+}
 
 st.set_page_config(page_title="Full Simulation", page_icon="🏆", layout="wide")
 
@@ -19,13 +34,26 @@ def reset_sim():
 
 
 def load_sim():
-    with st.spinner(f"Generating {TOTAL_QUESTIONS} scenario-based questions (fetching real exam examples…)"):
-        prompt = build_inspired_prompt(SIMULATION_GENERATION_PROMPT.format(n=TOTAL_QUESTIONS))
-        questions = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
+    # Start with sample bank questions, then fill remainder with AI-generated
+    sample_qs = load_sample_questions()
+    n_samples = len(sample_qs)
+    n_ai = max(0, TOTAL_QUESTIONS - n_samples)
 
-    if not questions or not isinstance(questions, list):
+    questions = list(sample_qs)
+
+    if n_ai > 0:
+        with st.spinner(f"Generating {n_ai} additional scenario-based questions…"):
+            prompt = build_inspired_prompt(SIMULATION_GENERATION_PROMPT.format(n=n_ai))
+            ai_qs = get_claude_json(prompt, system_prompt=SYSTEM_PROMPT_QUIZ)
+        if ai_qs and isinstance(ai_qs, list):
+            questions += ai_qs
+
+    if not questions:
         st.error("Failed to generate exam questions. Please try again.")
         return False
+
+    import random
+    random.shuffle(questions)
 
     st.session_state["sim_questions"] = questions[:TOTAL_QUESTIONS]
     st.session_state["sim_answers"] = {}
@@ -34,6 +62,7 @@ def load_sim():
     st.session_state["sim_finished"] = False
     st.session_state["sim_current"] = 0
     st.session_state["sim_score_saved"] = False
+    st.session_state["sim_learn_more_history"] = {}
     return True
 
 
@@ -227,15 +256,90 @@ else:
         for i, q in wrong:
             user_ans = answers.get(i, "—")
             correct_ans = q.get("answer", "")
-            with st.expander(f"❌ Q{i+1}: {q['question'][:80]}…"):
-                st.markdown(f"**Your answer:** {user_ans}")
-                st.markdown(f"**Correct answer:** {correct_ans}")
+            with st.expander(f"❌ Q{i+1}: {q['question'][:90]}…"):
+                st.markdown(f"**Your answer:** {user_ans} | **Correct answer:** {correct_ans}")
                 for opt in q.get("options", []):
-                    st.markdown(f"- {opt}")
-                st.info(f"**Explanation:** {q.get('explanation', '')}")
+                    marker = " ✓" if opt.startswith(correct_ans) else (" ✗" if opt.startswith(str(user_ans)) and user_ans != correct_ans else "")
+                    st.markdown(f"- {opt}{marker}")
+                st.divider()
+                _render_distractor_analysis(q, user_ans, i)
     else:
         st.success("Perfect score — no wrong answers!")
 
     if st.button("Retake Exam", type="primary"):
         reset_sim()
         st.rerun()
+
+
+def _render_distractor_analysis(q: dict, user_ans: str, q_index: int):
+    correct_ans = q.get("answer", "")
+    explanation = q.get("explanation", "")
+    distractor_analysis = q.get("distractor_analysis", {})
+    close_options = q.get("close_options", [])
+    close_vs_correct = q.get("close_vs_correct", "")
+
+    st.markdown(f"**Why {correct_ans} is correct:**")
+    st.info(explanation)
+
+    if close_options and close_vs_correct:
+        close_labels = " and ".join(close_options)
+        st.markdown(f"**Close distractor{'s' if len(close_options) > 1 else ''}: {close_labels}**")
+        st.warning(f"⚠️ {close_vs_correct}")
+
+    if distractor_analysis:
+        st.markdown("---")
+        st.markdown("**Option-by-option analysis:**")
+        for opt_letter, analysis in distractor_analysis.items():
+            opt_letter = opt_letter.strip()
+            is_close = opt_letter in close_options
+            is_chosen = opt_letter == user_ans and user_ans != correct_ans
+            icon = "🎯 " if is_close else ""
+            chosen_tag = " ← your answer" if is_chosen else ""
+            mistake_cat = analysis.get("mistake_category", "")
+            color_icon = MISTAKE_CATEGORY_COLORS.get(mistake_cat, "⚪")
+            with st.expander(
+                f"{icon}Option {opt_letter}{chosen_tag} — {color_icon} {mistake_cat}",
+                expanded=is_chosen or is_close,
+            ):
+                st.markdown("**Why this is wrong here:**")
+                st.markdown(analysis.get("why_wrong", ""))
+                st.markdown(f"**When {opt_letter} would be the right answer:**")
+                st.markdown(f"_{analysis.get('when_correct', '')}_")
+
+    st.markdown("---")
+    _render_learn_more_chat(q, q_index)
+
+
+def _render_learn_more_chat(q: dict, q_index: int):
+    chat_key = "sim_learn_more_history"
+    all_histories = st.session_state.get(chat_key, {})
+    history = all_histories.get(q_index, [])
+
+    with st.expander("💬 Learn More — chat about this question", expanded=False):
+        st.caption(
+            "Ask anything about this question's concepts, why options are right/wrong, "
+            "or how to apply this pattern in production. Chat stays focused on this question."
+        )
+        for msg in history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        user_input = st.chat_input(
+            "Ask about this question…",
+            key=f"sim_learn_more_input_{q_index}",
+        )
+        if user_input:
+            history.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
+            with st.chat_message("assistant"):
+                response_placeholder = st.empty()
+                full_response = ""
+                with stream_question_chat(q, history[:-1], user_input) as stream:
+                    for text in stream.text_stream:
+                        full_response += text
+                        response_placeholder.markdown(full_response + "▌")
+                response_placeholder.markdown(full_response)
+            history.append({"role": "assistant", "content": full_response})
+            all_histories[q_index] = history
+            st.session_state[chat_key] = all_histories

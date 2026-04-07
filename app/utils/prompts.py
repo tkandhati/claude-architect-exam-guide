@@ -76,63 +76,74 @@ GOTCHA_TOPICS = {
     ],
 }
 
+ENHANCED_SCHEMA_INSTRUCTIONS = """
+Each question MUST use this exact JSON structure with no missing fields:
+{
+  "question": "Scenario-based question text with `inline_code` where relevant",
+  "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+  "answer": "B",
+  "category": "one of the 5 domain names",
+  "explanation": "B is correct because [precise structural/deterministic reason]. This ensures [production guarantee].",
+  "distractor_analysis": {
+    "A": {
+      "why_wrong": "Specific reason A fails in this production scenario.",
+      "when_correct": "The scenario where A would be the right answer instead.",
+      "mistake_category": "one of: Prompt-over-Structure Fallacy | Over-Engineering | Correct Direction Wrong Order | Surface-Level Fix | Non-Existent Feature | Wrong Layer | Repeating Failed Strategy | Ignoring Constraint | Misread Constraint | Lagging Signal"
+    },
+    "C": { "why_wrong": "...", "when_correct": "...", "mistake_category": "..." },
+    "D": { "why_wrong": "...", "when_correct": "...", "mistake_category": "..." }
+  },
+  "close_options": ["A"],
+  "close_vs_correct": "Why the close option(s) are tempting and precisely what makes the correct answer better in this specific scenario."
+}
+Note: distractor_analysis should contain entries for every wrong option (all options except the answer).
+"""
+
 QUIZ_GENERATION_PROMPT = """Generate {n} multiple-choice exam questions for the domain: "{category}"
 for the Claude Certified Architect – Foundations (CCA-F) certification.
 
 The real CCA-F exam format:
-- Every question anchors the candidate in a PRODUCTION scenario (customer support agent, CI/CD pipeline, multi-agent research system, structured data extraction, developer productivity tooling)
+- Every question anchors the candidate in a PRODUCTION scenario with specific metrics, tool names, or code snippets
 - Wrong answers represent real engineering mistakes — all 4 options must be architecturally plausible
 - Questions test ARCHITECTURAL JUDGMENT and TRADE-OFFS, not trivia or memorization
 - The most-tested principle: programmatic/structural enforcement beats prompt-based guidance for anything financial, security, or compliance-related
 
-Use these question patterns (vary them):
-- "A team built [agent/workflow]. [Problem occurs]. What is the MOST LIKELY cause / correct fix?"
-- "Which approach BEST ensures [requirement] in a production [system]?"
-- "A developer [did X]. Why does [symptom] occur / what should they do instead?"
-- "An agent [does X]. Which design decision explains this behavior?"
-- "Which of the following correctly describes [behavior/trade-off]?"
+Question patterns (vary them):
+- "In testing, you notice [agent/system] does X even though Y would be more appropriate. What should you examine first?"
+- "Production data shows [specific metric/failure]. Which change would most effectively address this?"
+- "Your pipeline script [does X] but [problem occurs]. What's the correct approach?"
+- "A developer reports [symptom]. What's the most likely explanation?"
+- "You want to [achieve goal] while [constraint]. Which approach should you use?"
 
 Requirements:
-- One clearly correct answer; three distractors that represent real plausible mistakes
-- Explanations must state WHY the correct answer is deterministic/structural AND why each wrong answer fails in production
-- Questions must be challenging — candidates with surface knowledge should pick the wrong answer
+- One clearly correct answer that is structurally/deterministically better — not just marginally better
+- Three distractors that each represent a distinct, real engineering mistake
+- The close distractor should require genuine understanding to distinguish from the correct answer
+- Questions must be challenging — surface knowledge should lead to the wrong answer
 
-Return ONLY a valid JSON array. No markdown. No code fences. No text before or after the JSON.
-[
-  {{
-    "question": "...",
-    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-    "answer": "B",
-    "explanation": "B is correct because [deterministic/structural reason]. A fails because [why it breaks in production]. C fails because [reason]. D fails because [reason]."
-  }}
-]"""
+""" + ENHANCED_SCHEMA_INSTRUCTIONS + """
+
+Return ONLY a valid JSON array. No markdown. No code fences. No text before or after the JSON."""
 
 SIMULATION_GENERATION_PROMPT = """Generate exactly {n} multiple-choice exam questions for the Claude Certified Architect – Foundations (CCA-F) certification.
 
 The real exam is 60 scenario-based questions, 120 minutes, pass score 720/1000.
 Distribute questions by official domain weight:
-- Agentic Architecture & Orchestration (27%): orchestration patterns, subagent context passing, programmatic enforcement via hooks, escalation design, stop_reason handling
-- Tool Design & MCP Integration (18%): tool descriptions, structured error responses, MCP trust model, isError vs. JSON-RPC errors, lookup-then-act pattern
-- Claude Code Configuration & Workflows (20%): CLAUDE.md hierarchy, PreToolUse hooks, Grep vs. Glob, Edit unique-match requirement, -p flag for CI, custom slash commands
-- Prompt Engineering & Structured Output (20%): system prompt dilution, few-shot examples, JSON schema output, validation-retry loops, two-step reason-then-format
+- Agentic Architecture & Orchestration (27%): orchestration patterns, subagent context passing, programmatic enforcement via hooks, escalation design, stop_reason handling, tool ordering prerequisites
+- Tool Design & MCP Integration (18%): tool descriptions, structured error responses, MCP trust model, isError vs. JSON-RPC errors, lookup-then-act pattern, parallel tool batching
+- Claude Code Configuration & Workflows (20%): CLAUDE.md hierarchy, PreToolUse hooks, Grep vs. Glob, -p flag for CI, custom slash commands, plan mode vs execution mode
+- Prompt Engineering & Structured Output (20%): system prompt dilution, few-shot examples, JSON schema output, validation-retry loops, two-step reason-then-format, concrete examples vs prose
 - Context Management & Reliability (15%): stateless API, progressive summarization vs. sliding window, structured case-facts, stale session handling, error propagation
 
 Every question must:
-- Drop the candidate into a PRODUCTION scenario
-- Have 3 wrong answers that represent real engineering mistakes (all plausible)
+- Drop the candidate into a PRODUCTION scenario with specific details (metrics, tool names, code)
+- Have 3 wrong answers that represent distinct real engineering mistakes
 - Test architectural judgment, not memorization
 - The overriding principle: programmatic enforcement beats prompt-based guidance for anything that must hold 100% of the time
 
-Return ONLY a valid JSON array. No markdown. No code fences. No text before or after the JSON.
-[
-  {{
-    "question": "...",
-    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-    "answer": "A",
-    "explanation": "Why A is correct and why B/C/D fail in production.",
-    "category": "Agentic Architecture & Orchestration"
-  }}
-]"""
+""" + ENHANCED_SCHEMA_INSTRUCTIONS + """
+
+Return ONLY a valid JSON array. No markdown. No code fences. No text before or after the JSON."""
 
 STUDY_PLAN_PROMPT = """Based on these exam scores by domain: {scores_json}
 

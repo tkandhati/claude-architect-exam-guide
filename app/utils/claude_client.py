@@ -52,6 +52,54 @@ def get_claude_response(prompt: str, system_prompt: str = "", stream: bool = Fal
         st.stop()
 
 
+def stream_question_chat(question: dict, chat_history: list[dict], user_message: str):
+    """
+    Stream a chat response anchored strictly to one exam question's concepts.
+    chat_history: list of {"role": "user"|"assistant", "content": str}
+    Returns a stream context manager.
+    """
+    client = _get_client()
+
+    q_text = question.get("question", "")
+    options = "\n".join(question.get("options", []))
+    answer = question.get("answer", "")
+    explanation = question.get("explanation", "")
+    category = question.get("category", "")
+
+    system = f"""You are a focused exam tutor for the Claude Certified Architect – Foundations (CCA-F) exam.
+Your job is to help the learner deeply understand ONE specific question and the concepts it tests.
+Stay strictly on-topic — only discuss concepts directly relevant to this question.
+Do not answer unrelated questions; politely redirect to the question's topic if needed.
+
+=== QUESTION CONTEXT ===
+Category: {category}
+
+Question: {q_text}
+
+Options:
+{options}
+
+Correct Answer: {answer}
+Explanation: {explanation}
+========================
+
+When explaining:
+- Connect concepts to the specific scenario in the question
+- Use analogies from production engineering when helpful
+- If asked about a wrong option, explain the exact production failure mode
+- If asked about the correct answer, explain WHY it provides a structural guarantee the others don't
+- Be concise but precise — this is exam prep, not a lecture"""
+
+    messages = chat_history + [{"role": "user", "content": user_message}]
+
+    return client.messages.stream(
+        model=MODEL,
+        max_tokens=1024,
+        system=system,
+        messages=messages,
+    )
+
+
 def get_claude_json(prompt: str, system_prompt: str = "") -> list | dict | None:
     """Call Claude and parse the response as JSON. Returns parsed object or None on error."""
     client = _get_client()
