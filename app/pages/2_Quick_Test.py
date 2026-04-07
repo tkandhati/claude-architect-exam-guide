@@ -105,7 +105,7 @@ cat = st.session_state.get("qt_category", category)
 total = len(questions)
 
 
-def render_distractor_analysis(q: dict, user_ans: str):
+def render_distractor_analysis(q: dict, user_ans: str, q_index: int):
     """Render the enhanced explanation panel with per-option analysis and Learn More chat."""
     correct_ans = q.get("answer", "")
     explanation = q.get("explanation", "")
@@ -113,86 +113,86 @@ def render_distractor_analysis(q: dict, user_ans: str):
     close_options = q.get("close_options", [])
     close_vs_correct = q.get("close_vs_correct", "")
 
-    # Main explanation
     st.markdown(f"**Why {correct_ans} is correct:**")
     st.info(explanation)
 
-    # Close distractor callout
     if close_options and close_vs_correct:
         close_labels = " and ".join(close_options)
         st.markdown(f"**Close distractor{'s' if len(close_options) > 1 else ''}: {close_labels}**")
         st.warning(f"⚠️ {close_vs_correct}")
 
-    # Per-option breakdown
     if distractor_analysis:
         st.markdown("---")
         st.markdown("**Option-by-option analysis:**")
-
         for opt_letter, analysis in distractor_analysis.items():
             opt_letter = opt_letter.strip()
             is_close = opt_letter in close_options
             is_chosen = opt_letter == user_ans and user_ans != correct_ans
-
             icon = "🎯 " if is_close else ""
             chosen_tag = " ← your answer" if is_chosen else ""
             mistake_cat = analysis.get("mistake_category", "")
             color_icon = MISTAKE_CATEGORY_COLORS.get(mistake_cat, "⚪")
-
             with st.expander(
                 f"{icon}Option {opt_letter}{chosen_tag} — {color_icon} {mistake_cat}",
                 expanded=is_chosen or is_close,
             ):
-                st.markdown(f"**Why this is wrong here:**")
+                st.markdown("**Why this is wrong here:**")
                 st.markdown(analysis.get("why_wrong", ""))
-
                 st.markdown(f"**When {opt_letter} would be the right answer:**")
                 st.markdown(f"_{analysis.get('when_correct', '')}_")
 
-    # Learn More chat
     st.markdown("---")
-    _render_learn_more_chat(q, current)
+    _render_learn_more_chat(q, q_index)
 
 
 def _render_learn_more_chat(q: dict, q_index: int):
-    """Render a question-scoped chat that stays anchored to this question's concepts."""
-    chat_key = f"qt_learn_more_history"
-    all_histories = st.session_state.get(chat_key, {})
+    """Question-scoped chat. Input is always below messages; history is oldest-first."""
+    chat_store_key = "qt_learn_more_history"
+    all_histories = st.session_state.get(chat_store_key, {})
     history = all_histories.get(q_index, [])
 
     with st.expander("💬 Learn More — chat about this question", expanded=False):
         st.caption(
             "Ask anything about this question's concepts, why options are right/wrong, "
-            "or how to apply this pattern in production. Chat stays focused on this question."
+            "or how to apply this pattern in production. Stays focused on this question."
         )
 
-        # Display chat history
+        # Messages — oldest first so newest is at the bottom
         for msg in history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input
-        user_input = st.chat_input(
-            "Ask about this question…",
-            key=f"learn_more_input_{q_index}",
-        )
+        # Input below messages — use text_input + button to control position
+        col_input, col_btn = st.columns([5, 1])
+        with col_input:
+            user_input = st.text_input(
+                "Your question",
+                key=f"qt_lm_input_{q_index}",
+                label_visibility="collapsed",
+                placeholder="Ask about this question…",
+            )
+        with col_btn:
+            send = st.button("Send", key=f"qt_lm_send_{q_index}")
 
-        if user_input:
-            history.append({"role": "user", "content": user_input})
+        if send and user_input.strip():
+            msg_text = user_input.strip()
+            history.append({"role": "user", "content": msg_text})
+
             with st.chat_message("user"):
-                st.markdown(user_input)
-
+                st.markdown(msg_text)
             with st.chat_message("assistant"):
-                response_placeholder = st.empty()
+                placeholder = st.empty()
                 full_response = ""
-                with stream_question_chat(q, history[:-1], user_input) as stream:
+                with stream_question_chat(q, history[:-1], msg_text) as stream:
                     for text in stream.text_stream:
                         full_response += text
-                        response_placeholder.markdown(full_response + "▌")
-                response_placeholder.markdown(full_response)
+                        placeholder.markdown(full_response + "▌")
+                placeholder.markdown(full_response)
 
             history.append({"role": "assistant", "content": full_response})
             all_histories[q_index] = history
-            st.session_state[chat_key] = all_histories
+            st.session_state[chat_store_key] = all_histories
+            st.rerun()
 
 
 if not finished:
@@ -227,7 +227,7 @@ if not finished:
         else:
             st.error(f"❌ Incorrect. The correct answer is **{correct_ans}**.")
 
-        render_distractor_analysis(q, user_ans)
+        render_distractor_analysis(q, user_ans, current)
 
         col_prev, col_next = st.columns(2)
         with col_prev:
@@ -283,7 +283,7 @@ else:
                 marker = " ✓" if opt.startswith(correct_ans) else (" ✗" if opt.startswith(user_ans) and user_ans != correct_ans else "")
                 st.markdown(f"- {opt}{marker}")
             st.divider()
-            render_distractor_analysis(q, user_ans)
+            render_distractor_analysis(q, user_ans, i)
 
     if st.button("New Quiz", type="primary"):
         reset_quiz()

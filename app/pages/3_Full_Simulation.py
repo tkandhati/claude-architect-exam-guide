@@ -311,35 +311,48 @@ def _render_distractor_analysis(q: dict, user_ans: str, q_index: int):
 
 
 def _render_learn_more_chat(q: dict, q_index: int):
-    chat_key = "sim_learn_more_history"
-    all_histories = st.session_state.get(chat_key, {})
+    """Question-scoped chat. Input is always below messages; history is oldest-first."""
+    chat_store_key = "sim_learn_more_history"
+    all_histories = st.session_state.get(chat_store_key, {})
     history = all_histories.get(q_index, [])
 
     with st.expander("💬 Learn More — chat about this question", expanded=False):
         st.caption(
             "Ask anything about this question's concepts, why options are right/wrong, "
-            "or how to apply this pattern in production. Chat stays focused on this question."
+            "or how to apply this pattern in production. Stays focused on this question."
         )
+
+        # Messages oldest-first so newest is at the bottom
         for msg in history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        user_input = st.chat_input(
-            "Ask about this question…",
-            key=f"sim_learn_more_input_{q_index}",
-        )
-        if user_input:
-            history.append({"role": "user", "content": user_input})
+        # Input below messages
+        col_input, col_btn = st.columns([5, 1])
+        with col_input:
+            user_input = st.text_input(
+                "Your question",
+                key=f"sim_lm_input_{q_index}",
+                label_visibility="collapsed",
+                placeholder="Ask about this question…",
+            )
+        with col_btn:
+            send = st.button("Send", key=f"sim_lm_send_{q_index}")
+
+        if send and user_input.strip():
+            msg_text = user_input.strip()
+            history.append({"role": "user", "content": msg_text})
             with st.chat_message("user"):
-                st.markdown(user_input)
+                st.markdown(msg_text)
             with st.chat_message("assistant"):
-                response_placeholder = st.empty()
+                placeholder = st.empty()
                 full_response = ""
-                with stream_question_chat(q, history[:-1], user_input) as stream:
+                with stream_question_chat(q, history[:-1], msg_text) as stream:
                     for text in stream.text_stream:
                         full_response += text
-                        response_placeholder.markdown(full_response + "▌")
-                response_placeholder.markdown(full_response)
+                        placeholder.markdown(full_response + "▌")
+                placeholder.markdown(full_response)
             history.append({"role": "assistant", "content": full_response})
             all_histories[q_index] = history
-            st.session_state[chat_key] = all_histories
+            st.session_state[chat_store_key] = all_histories
+            st.rerun()
