@@ -1,6 +1,8 @@
+import random
+
 import streamlit as st
-from utils.prompts import EXAM_CATEGORIES, GOTCHA_TOPICS, SYSTEM_PROMPT_GOTCHA
 from utils.claude_client import get_claude_response, is_api_configured
+from utils.prompts import EXAM_CATEGORIES, GOTCHA_TOPICS, SYSTEM_PROMPT_GOTCHA
 
 st.set_page_config(page_title="Gotcha Topics", page_icon="🎯", layout="wide")
 
@@ -15,16 +17,35 @@ with st.sidebar:
 
 st.title("🎯 Gotcha Topics")
 st.markdown(f"**Category:** {category}")
-st.markdown("These are the concepts most likely to trip you up. Click any topic for a Claude explanation.")
+
+col1, col2 = st.columns([5, 1])
+with col1:
+    st.markdown("These are the concepts most likely to trip you up. Click any topic for a Claude explanation.")
+with col2:
+    if st.button("🔄 Refresh", key=f"refresh_{category}", help="Show a different set of gotchas"):
+        batch_key = f"gotcha_batch_{category}"
+        all_topics = GOTCHA_TOPICS.get(category, [])
+        current = st.session_state.get(batch_key, [])
+        remaining = [t for t in all_topics if t not in current]
+        pool = remaining if len(remaining) >= 4 else all_topics
+        st.session_state[batch_key] = random.sample(pool, min(4, len(pool)))
+        st.rerun()
 
 st.divider()
 
-topics = GOTCHA_TOPICS.get(category, [])
+all_topics = GOTCHA_TOPICS.get(category, [])
+batch_key = f"gotcha_batch_{category}"
+
+if batch_key not in st.session_state:
+    st.session_state[batch_key] = random.sample(all_topics, min(4, len(all_topics)))
+
+topics = st.session_state[batch_key]
 
 for i, topic in enumerate(topics):
+    topic_id = str(abs(hash(topic)))[-8:]
     with st.expander(f"**{i+1}.** {topic}"):
-        btn_key = f"explain_{category}_{i}"
-        response_key = f"response_{category}_{i}"
+        btn_key = f"explain_{category}_{topic_id}"
+        response_key = f"response_{category}_{topic_id}"
 
         if st.button("Explain with Claude", key=btn_key):
             with st.spinner("Asking Claude..."):

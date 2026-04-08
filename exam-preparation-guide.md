@@ -20,9 +20,17 @@ The model decides which tool to call and how to populate its parameters based on
 
 Ambiguous parameters cause bad tool calls. A bare `string` for dates, free-text fields for names that should come from a controlled vocabulary: these lead to invalid combinations. The fix depends on the kind of ambiguity:
 
-- When parameters have *interdependent constraints* (the valid payment method depends on the region or currency), consider splitting into separate tools where each enforces its own constraints structurally. A `create_bank_transfer(amount, iban, bic)` tool makes it impossible to pass a credit card number. The parameter doesn't exist.
-- When the problem is *entity resolution* (matching free-text input to a specific record), introduce a lookup-then-act pattern: one tool to search and return identifiers, a second tool to act on a specific ID.
-- When parameters have known valid values, use `enum` constraints. But enums alone don't capture *relationships* between parameters.
+- **Interdependent constraints** (valid payment method depends on region/currency):  
+  **Use**: split into separate tools — each enforces its own constraints structurally. `create_bank_transfer(amount, iban, bic)` makes passing a credit card number impossible.  
+  **Avoid**: one combined tool with validation — invalid combinations remain expressible.
+
+- **Entity resolution** (matching free-text to a specific record):  
+  **Use**: lookup-then-act — search tool returns IDs; action tool takes the specific ID.  
+  **Avoid**: free-text name fields in action tools — ambiguous matches cause wrong operations.
+
+- **Known valid values**:  
+  **Use**: `enum` constraints for single-parameter validation.  
+  **Avoid**: enums when validity depends on *another* parameter's value — use tool splitting instead.
 
 Don't try to encode format hints in parameter names. Writing `account_number_integer_eight_digits` is less effective than a concise description: `"account_number": 8-digit customer account ID (e.g., "10482930")`. The model reads descriptions. It doesn't parse semantic meaning from camelCase conventions.
 
@@ -247,7 +255,9 @@ MCP error handling has two tiers:
 
 Protocol errors mean the tool wasn't called properly. Application errors mean the tool was called properly but the operation failed.
 
-When deciding between MCP and custom tools: use MCP when the integration serves multiple applications or when a community MCP server already exists for your data source. Use custom tools when the integration is specific to a single application's workflow and reusability isn't a concern.
+**MCP vs. custom tools:**  
+**Use MCP**: integration serves multiple applications, or a community server already exists for your data source.  
+**Use custom tools**: integration is specific to one application and reusability isn't a concern.
 
 ### Key Relationships
 
@@ -289,13 +299,21 @@ The core loop is observe, reason, act. At each step, tool results get added to t
 
 Four task decomposition patterns worth knowing:
 
-- **Prompt chaining**: Break a task into a fixed sequence of steps where each step's output feeds the next. Best for predictable, repeating workflows (a code review that always checks style, then security, then documentation). The key: steps are known in advance and don't change based on intermediate results.
+- **Prompt chaining**: Fixed sequence — each step's output feeds the next.  
+  **Use when**: steps are always the same regardless of input (e.g., code review: style → security → docs).  
+  **Avoid when**: intermediate results might change what step comes next.
 
-- **Routing**: Classify the input first, then dispatch to a specialized prompt or workflow. Best when different input types need completely different handling (classifying a support ticket as billing vs. technical vs. account management before processing).
+- **Routing**: Classify first, then dispatch to a specialized workflow.  
+  **Use when**: different input types need completely different handling (billing vs. technical vs. account).  
+  **Avoid when**: inputs are similar enough that one workflow handles all cases well.
 
-- **Orchestrator-workers**: A central LLM analyzes the task and dynamically determines what subtasks are needed, then delegates each to a worker. Best when the required steps aren't known in advance.
+- **Orchestrator-workers**: Central LLM determines subtasks dynamically, delegates each to a worker.  
+  **Use when**: required steps depend on task content and aren't known upfront.  
+  **Avoid when**: steps are always the same — prompt chaining is simpler and cheaper.
 
-- **Dynamic decomposition**: The agent generates subtasks incrementally based on what it discovers. Best for investigative tasks (debugging, codebase exploration) where each finding reshapes the plan.
+- **Dynamic decomposition**: Generate subtasks incrementally based on discoveries.  
+  **Use when**: each finding reshapes the plan (debugging, codebase exploration).  
+  **Avoid when**: task is mechanical and well-defined — upfront planning adds no value.
 
 Not every task benefits from multi-phase decomposition. Mechanical, well-defined tasks (reformatting dates across a codebase) are straightforward enough that adding analyze-propose-implement phases just adds overhead. Open-ended, judgment-heavy tasks (refactoring a module to support multi-tenancy with proper data isolation) benefit significantly because the analysis phase surfaces considerations that improve the implementation.
 
@@ -470,12 +488,12 @@ Allocate your study time roughly like this:
 - Version prompts for multi-session conversations to prevent contradictions.
 
 ### Agentic Patterns
-| Pattern | When to Use |
-|---|---|
-| Prompt chaining | Fixed, repeating workflows with known steps |
-| Routing | Different input types need different handling |
-| Orchestrator-workers | Steps depend on input, determined dynamically |
-| Dynamic decomposition | Investigative tasks where findings reshape the plan |
+| Pattern | Use when | Avoid when |
+|---|---|---|
+| Prompt chaining | Steps are always the same regardless of input | Intermediate results might change what step comes next |
+| Routing | Different input types need completely different handling | Inputs are similar enough for one workflow to cover all |
+| Orchestrator-workers | Steps aren't known until the task is analyzed | Workflow is predictable — adds cost for no benefit |
+| Dynamic decomposition | Findings actively reshape the plan (debugging, exploration) | Task is mechanical and well-defined |
 
 ### Escalation & Compliance
 - Escalate when: customer requests human, issue exceeds authority, agent stuck.
