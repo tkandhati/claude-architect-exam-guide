@@ -163,19 +163,9 @@ def _render_learn_more_chat(q: dict, q_index: int):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input below messages — form clears on submit and Enter key works
-        with st.form(key=f"qt_lm_form_{q_index}", clear_on_submit=True):
-            col_input, col_btn = st.columns([5, 1])
-            with col_input:
-                user_input = st.text_input(
-                    "Your question",
-                    label_visibility="collapsed",
-                    placeholder="Ask about this question…",
-                )
-            with col_btn:
-                send = st.form_submit_button("Send")
+        user_input = st.chat_input("Ask about this question…", key=f"qt_lm_input_{q_index}")
 
-        if send and user_input.strip():
+        if user_input:
             msg_text = user_input.strip()
             history.append({"role": "user", "content": msg_text})
 
