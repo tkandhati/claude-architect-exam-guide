@@ -36,10 +36,21 @@ How a tool reports failures matters as much as how it reports successes. Verbose
 
 ### Common Pitfalls
 
-- **Relying on prompt instructions to enforce tool usage patterns.** If you need the agent to always call a preview before executing a destructive action, a prompt instruction won't guarantee that. The model will skip the preview step some percentage of the time. Structural enforcement (requiring a single-use token from the preview tool to call the execution tool) is deterministic.
-- **Conflating schema validation with behavioral guidance.** Marking a field as `required` in JSON Schema ensures the parameter is present. It doesn't help the model understand what *value* to provide. Schema constraints and descriptive documentation serve different purposes.
-- **Over-composing tools.** Combining multiple operations into one tool improves efficiency when intermediate steps don't require model judgment. But if the model needs to *see* intermediate results to make a decision, those steps must stay separate. Combine mechanical steps; keep decision points visible.
-- **Using `preview: boolean` flags for safety-critical operations.** A single tool with a preview parameter creates a path where the agent can skip the preview. Two separate tools (one that generates a plan and returns a one-time approval code, one that requires that code to execute) make the unsafe path impossible.
+- **Prompt instructions don't guarantee tool ordering** — the model skips steps some % of the time.  
+  **Use**: structural enforcement (preview tool returns a one-time token; execute tool requires it).  
+  **Avoid**: prompt instructions alone whenever a step must *always* run.
+
+- **`required` ≠ good value** — schema marks presence; descriptions guide content.  
+  **Use**: `required` + description with a format example (e.g., `"8-digit ID like '10482930'"`).  
+  **Avoid**: relying on `required` alone to get the right value from the model.
+
+- **Don't combine steps that need model judgment** — merging them hides the decision point.  
+  **Use**: combined tools only when intermediate results don't change what to do next (mechanical steps).  
+  **Avoid**: combining when the model needs to *see* an intermediate result before deciding.
+
+- **`preview: boolean` doesn't make preview mandatory** — the model can pass `false`.  
+  **Use**: two separate tools: preview returns a one-time approval token; execute requires that token.  
+  **Avoid**: single-tool patterns for any safety-critical or destructive operation.
 
 ### Go Deeper
 
@@ -83,10 +94,21 @@ Error handling is a tool design decision. Whether an agent retries, escalates, o
 
 ### Common Pitfalls
 
-- **Treating all errors identically.** The single most common mistake. Uniform error responses produce unpredictable agent behavior because the model has to guess.
-- **Returning `retryable: true` for operations with uncertain outcomes.** If you don't know whether a notification was sent, marking it as retryable will cause duplicates. Communicate uncertainty and let the user decide.
-- **Using exceptions instead of structured error returns.** Framework-level exception handling strips context. Return errors as tool content.
-- **Relying on the model to parse error messages for classification.** Teaching the model to distinguish "503 Service Unavailable" from "Order not found" by text parsing is fragile. Structured metadata is reliable.
+- **Never return the same generic error for all failures** — the model can't retry intelligently without classification.  
+  **Use**: structured `error_category` fields: `transient` / `permanent` / `uncertain`.  
+  **Avoid**: "Operation failed" as a catch-all for every failure type.
+
+- **`retryable: true` on uncertain write outcomes causes duplicates** — if you don't know it succeeded, retrying may double-charge or double-send.  
+  **Use**: `"status": "unknown"` with an explicit do-not-retry note.  
+  **Avoid**: `retryable: true` for any write operation that timed out mid-execution.
+
+- **Thrown exceptions strip error context** — the framework catches and discards detail.  
+  **Use**: return errors in the tool's `content` field with `isError: true`.  
+  **Avoid**: throwing exceptions from tool code for expected failure conditions.
+
+- **Don't make the model classify errors by parsing text** — fragile and inconsistent across APIs.  
+  **Use**: structured metadata fields (`error_type`, `retryable`) the model can read directly.  
+  **Avoid**: passing raw HTTP status strings and expecting the model to interpret them reliably.
 
 ### Go Deeper
 
@@ -132,10 +154,21 @@ Context management touches everything. System prompt adherence degrades as conte
 
 ### Common Pitfalls
 
-- **Assuming the model has built-in memory.** It doesn't. No memory, no session state, no internal profile that persists between calls. Your application manages all state.
-- **Confusing context capacity with context attention.** Even when context usage is well under half capacity, the model may not reliably track preference changes scattered across many turns. A structured state object is more reliable.
-- **Summarizing too aggressively.** Summaries lose detail. When users need exact numbers, specific criteria, or exact phrasing, summaries produce hedged or inaccurate responses. Know when to use structured fact extraction instead.
-- **Accumulating RAG results without cleanup.** If every query's retrieved context stays in the conversation forever, it crowds out the actual conversation history.
+- **The model has no memory** — every call starts fresh unless you send history in the `messages` array.  
+  **Use**: include full conversation history on every request; store state in your application.  
+  **Avoid**: assuming the model "remembers" anything from prior sessions or earlier in a session it didn't receive.
+
+- **Context capacity ≠ context attention** — old preferences buried in history get missed even at 50% capacity.  
+  **Use**: a structured state object with current values, updated explicitly each turn.  
+  **Avoid**: relying on the model to find the most recent preference by scanning a long conversation.
+
+- **Summaries lose precision — don't summarize when exact values matter.**  
+  **Use**: structured fact database for numbers, IDs, exact quotes requiring precise recall.  
+  **Avoid**: progressive summarization when the user may ask for exact figures or criteria.
+
+- **Stale RAG results crowd out real conversation** — accumulated retrieved context competes with actual history.  
+  **Use**: keep only the last 2–3 queries' RAG results; discard older ones.  
+  **Avoid**: letting every retrieval result accumulate in the conversation indefinitely.
 
 ### Go Deeper
 
@@ -167,10 +200,21 @@ Context management and system prompts are deeply linked: as context grows, promp
 
 ### Common Pitfalls
 
-- **Believing the system prompt is sent only once.** It's included in *every* API request. If your application sends it only with the first request, that's a bug.
-- **Using emphatic language ("CRITICAL", "NEVER", "ALWAYS") as a reliability mechanism.** These may slightly increase compliance but don't guarantee it. For rules that must hold 100% of the time, use programmatic enforcement.
-- **Adding more conditionals to cover edge cases.** Each additional branch makes the prompt longer and dilutes attention to each instruction. When you find yourself writing increasingly specific conditions, consider whether a general principle would work better.
-- **Ignoring prompt versioning.** Updating a system prompt for ongoing multi-session conversations can cause the model to contradict its own prior statements, because new instructions conflict with patterns in the historical context.
+- **System prompt goes out on *every* request** — not just the first one.  
+  **Use**: include the system prompt in every API call, always.  
+  **Avoid**: sending it once and omitting it from follow-up requests (silent behavioral drift).
+
+- **"NEVER" and "ALWAYS" are not guarantees** — emphatic caps slightly raise compliance; they don't make rules bulletproof.  
+  **Use**: programmatic enforcement (middleware/hooks) for rules that must hold 100% of the time.  
+  **Avoid**: treating emphasis as a substitute for structural or programmatic enforcement.
+
+- **More conditionals dilute attention to all instructions** — longer prompts spread model focus thin.  
+  **Use**: a general principle the model can apply with judgment when edge cases vary continuously.  
+  **Avoid**: adding more `if X then Y` branches every time a new edge case appears.
+
+- **Swapping system prompts mid-conversation causes contradictions** — new instructions fight established patterns.  
+  **Use**: versioned prompts with a planned transition strategy for multi-session applications.  
+  **Avoid**: silently updating the system prompt in ongoing conversations without accounting for prior context.
 
 ### Go Deeper
 
@@ -211,10 +255,21 @@ MCP builds on tool design (descriptions drive adoption) and error handling (the 
 
 ### Common Pitfalls
 
-- **Assuming MCP handles infrastructure concerns automatically.** It's a protocol, not a platform. Authentication, retries, rate limiting, and caching are on you.
-- **Writing minimal tool descriptions ("Checks code quality").** This is the primary reason agents don't adopt MCP tools. Invest in descriptions.
-- **Trusting tool annotations from unverified servers.** Self-reported metadata is not a security boundary.
-- **Thinking MCP tools are per-request.** All tools from all configured servers are available simultaneously. You don't select a server per turn.
+- **MCP is a protocol, not a platform** — no built-in auth, retries, rate limiting, or caching.  
+  **Use**: MCP for tool discovery and invocation; implement infra concerns separately in your server.  
+  **Avoid**: assuming MCP handles any operational concern beyond the protocol itself.
+
+- **Vague MCP descriptions = tool non-adoption** — the model picks a familiar built-in instead.  
+  **Use**: descriptions that state capabilities, expected input format, output format, and when to prefer this tool.  
+  **Avoid**: one-liners like "Checks code quality" — the model can't tell when this beats Grep.
+
+- **`readOnlyHint` is self-reported — not a security boundary.**  
+  **Use**: trust decisions based on your own assessment of the server's trustworthiness.  
+  **Avoid**: bypassing confirmation prompts solely because an annotation says read-only.
+
+- **All MCP server tools are available simultaneously** — the agent doesn't "switch" servers per turn.  
+  **Use**: distinct, non-overlapping descriptions so the model can differentiate tools across servers.  
+  **Avoid**: assuming tool selection is scoped to one active server at a time.
 
 ### Go Deeper
 
@@ -256,10 +311,21 @@ The granularity of your tools determines what "steps" are available for decompos
 
 ### Common Pitfalls
 
-- **Applying orchestrator-workers to predictable workflows.** If the steps are the same every time, prompt chaining is simpler and cheaper.
-- **Using fixed, upfront plans for investigative tasks.** Creating a plan before reading any code is wasteful because the first discovery may invalidate it. Use dynamic, adaptive decomposition instead.
-- **Resuming transcripts when the codebase has changed.** An old transcript may reference renamed functions or moved files. A summary of findings is more robust.
-- **Exhaustive analysis before any action.** Reading every file in a large codebase before writing a single test is an anti-pattern. Prioritize, start with high-impact areas, and adapt as you learn.
+- **Don't use orchestrator-workers for predictable, fixed workflows** — adds cost and complexity for no benefit.  
+  **Use**: prompt chaining when the steps are always the same regardless of input.  
+  **Avoid**: orchestrator-workers when the workflow doesn't vary by what the task contains.
+
+- **Fixed upfront plans fail on investigative tasks** — first finding may invalidate the whole plan.  
+  **Use**: dynamic decomposition — generate subtasks incrementally as discoveries emerge.  
+  **Avoid**: "analyze everything first, then act" for debugging or codebase exploration tasks.
+
+- **Old transcripts reference dead code** — renamed functions, moved files, merged PRs all invalidate prior context.  
+  **Use**: start fresh with a structured summary of prior findings, then make new reads/calls.  
+  **Avoid**: resuming old sessions after any codebase changes.
+
+- **Don't read every file before writing a single line** — exhaustive analysis is wasteful and delays value.  
+  **Use**: prioritize high-impact areas, act early, adapt as you learn.  
+  **Avoid**: requiring full-codebase coverage before taking any action.
 
 ### Go Deeper
 
@@ -299,10 +365,21 @@ This is where everything converges. Agentic workflows depend on well-designed to
 
 ### Common Pitfalls
 
-- **Relying on prompt instructions for hard compliance rules.** Prompt-based enforcement has a non-zero failure rate. Business rules with legal or financial consequences must be enforced programmatically.
-- **Passing raw conversation transcripts in escalation handoffs.** Human agents need structured, actionable summaries.
-- **Resuming sessions with stale tool results.** When a customer returns hours later, old tool results with outdated status fields compete for the model's attention against fresh results. Start new sessions with structured summaries.
-- **Acting on a frustrated customer's account without their consent.** Even when the return is straightforward, offer choice. Don't process unilaterally.
+- **Prompt instructions fail some % of the time — not acceptable for legal/financial rules.**  
+  **Use**: programmatic hooks or middleware that intercept and block non-compliant tool calls.  
+  **Avoid**: system prompt instructions alone for any rule with a legal or financial consequence.
+
+- **Never pass raw transcripts to human agents** — too long, no clear action items.  
+  **Use**: structured handoff: customer ID, root cause, transaction IDs, amounts, recommended action.  
+  **Avoid**: dumping conversation narrative without structure, or sending only the original complaint.
+
+- **Stale tool results from earlier sessions cause wrong decisions** — old order status, old balance.  
+  **Use**: new session + structured prior-session summary + fresh tool calls before engaging.  
+  **Avoid**: resuming with full history that includes outdated data the model may cite.
+
+- **Don't act on a customer's account unilaterally, even when the fix is obvious.**  
+  **Use**: acknowledge frustration → explain what can be done now → let the customer choose.  
+  **Avoid**: processing a refund or return without explicit customer consent.
 
 ### Go Deeper
 
