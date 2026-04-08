@@ -118,7 +118,7 @@ When explaining:
 
     return client.messages.stream(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=250,
         system=system,
         messages=messages,
     )
