@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 from utils.prompts import EXAM_CATEGORIES, SIMULATION_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
-from utils.claude_client import get_claude_json, is_api_configured, stream_question_chat
+from utils.claude_client import get_claude_json, is_api_configured, stream_question_chat, inject_chat_styles
 from utils.storage import save_result, load_sample_questions
 from utils.inspiration import build_inspired_prompt
 
@@ -21,6 +21,7 @@ MISTAKE_CATEGORY_COLORS = {
 }
 
 st.set_page_config(page_title="Full Simulation", page_icon="🏆", layout="wide")
+inject_chat_styles()
 
 TOTAL_QUESTIONS = 60
 EXAM_DURATION = 120 * 60  # 120 minutes in seconds (matches real CCA-F exam)
@@ -327,17 +328,17 @@ def _render_learn_more_chat(q: dict, q_index: int):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input below messages
-        col_input, col_btn = st.columns([5, 1])
-        with col_input:
-            user_input = st.text_input(
-                "Your question",
-                key=f"sim_lm_input_{q_index}",
-                label_visibility="collapsed",
-                placeholder="Ask about this question…",
-            )
-        with col_btn:
-            send = st.button("Send", key=f"sim_lm_send_{q_index}")
+        # Input below messages — form clears on submit and Enter key works
+        with st.form(key=f"sim_lm_form_{q_index}", clear_on_submit=True):
+            col_input, col_btn = st.columns([5, 1])
+            with col_input:
+                user_input = st.text_input(
+                    "Your question",
+                    label_visibility="collapsed",
+                    placeholder="Ask about this question…",
+                )
+            with col_btn:
+                send = st.form_submit_button("Send")
 
         if send and user_input.strip():
             msg_text = user_input.strip()

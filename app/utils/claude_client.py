@@ -3,6 +3,29 @@ import re
 import streamlit as st
 import anthropic
 
+
+def inject_chat_styles():
+    """Inject CSS so chat text inputs are visible regardless of theme."""
+    st.markdown(
+        """
+        <style>
+        /* Ensure text inputs inside forms/expanders have a visible border and background */
+        div[data-testid="stForm"] .stTextInput input,
+        .stExpander .stTextInput input {
+            background-color: var(--background-color, #fff);
+            border: 1px solid rgba(128, 128, 128, 0.6) !important;
+            border-radius: 6px;
+        }
+        div[data-testid="stForm"] .stTextInput input:focus,
+        .stExpander .stTextInput input:focus {
+            border-color: #6c63ff !important;
+            box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 MODEL = "claude-opus-4-6"
 MAX_TOKENS = 20000
 
