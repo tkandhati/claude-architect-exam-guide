@@ -60,7 +60,7 @@ def reset_quiz():
 
 def load_quiz(cat, n, use_samples):
     if use_samples:
-        questions = load_sample_questions(n=n)
+        questions = load_sample_questions(category=cat, n=n)
         if not questions:
             st.warning("Sample bank empty for this category — falling back to AI-generated questions.")
             use_samples = False

@@ -17,8 +17,9 @@ def load_sample_questions(category: str | None = None, n: int | None = None) -> 
         return []
     if category:
         questions = [q for q in questions if q.get("category") == category]
-    if n and len(questions) > n:
-        questions = random.sample(questions, n)
+    random.shuffle(questions)
+    if n:
+        questions = questions[:n]
     return questions
 
 
