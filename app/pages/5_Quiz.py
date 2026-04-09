@@ -2,13 +2,13 @@ import random
 import streamlit as st
 from utils.prompts import EXAM_CATEGORIES, TRUE_FALSE_QUESTIONS
 
-st.set_page_config(page_title="True / False", page_icon="✅", layout="wide")
+st.set_page_config(page_title="Quiz", page_icon="🧠", layout="wide")
 
 with st.sidebar:
     st.header("Select Category")
     category = st.selectbox("Category", EXAM_CATEGORIES, label_visibility="collapsed")
 
-st.title("✅ True / False Practice")
+st.title("🧠 Quiz")
 st.markdown(f"**Category:** {category}")
 st.divider()
 
@@ -17,12 +17,11 @@ answered_key = f"tf_answered_{category}"
 
 all_questions = TRUE_FALSE_QUESTIONS.get(category, [])
 
-# Initialise a shuffled queue for this category
 if queue_key not in st.session_state:
     q = all_questions[:]
     random.shuffle(q)
     st.session_state[queue_key] = q
-    st.session_state[answered_key] = None   # None = not answered yet
+    st.session_state[answered_key] = None
 
 queue = st.session_state[queue_key]
 
@@ -61,6 +60,8 @@ else:
         else:
             correct_word = "True" if current["a"] else "False"
             st.error(f"Wrong ✗  —  Answer is **{correct_word}**")
+
+        st.info(current["r"])
 
         if st.button("Next →", type="primary"):
             st.session_state[queue_key] = queue[1:]
