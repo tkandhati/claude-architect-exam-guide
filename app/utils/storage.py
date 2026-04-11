@@ -6,17 +6,25 @@ from typing import Any
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "results.json")
 SAMPLE_QUESTIONS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "sample_questions.json")
+SCENARIO_QUESTIONS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "scenario_questions.json")
+
+
+def _load_json(path: str) -> list[dict]:
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 
 def load_sample_questions(category: str | None = None, n: int | None = None) -> list[dict]:
-    """Load questions from the static sample bank. Optionally filter by category and limit count."""
-    try:
-        with open(SAMPLE_QUESTIONS_FILE, "r") as f:
-            questions = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    """Load questions from both sample banks. Filter by category (topic) or scenario name."""
+    questions = _load_json(SAMPLE_QUESTIONS_FILE) + _load_json(SCENARIO_QUESTIONS_FILE)
     if category:
-        questions = [q for q in questions if q.get("category") == category]
+        questions = [
+            q for q in questions
+            if q.get("category") == category or q.get("scenario") == category
+        ]
     random.shuffle(questions)
     if n:
         questions = questions[:n]

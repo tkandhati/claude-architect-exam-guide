@@ -1,6 +1,6 @@
 import streamlit as st
 import time
-from utils.prompts import EXAM_CATEGORIES, QUIZ_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
+from utils.prompts import EXAM_CATEGORIES, EXAM_SCENARIOS, QUIZ_GENERATION_PROMPT, SYSTEM_PROMPT_QUIZ
 from utils.claude_client import get_claude_json, is_api_configured, stream_question_chat, inject_chat_styles
 from utils.storage import save_result, load_sample_questions
 from utils.inspiration import build_inspired_prompt
@@ -31,13 +31,30 @@ with st.sidebar:
 
     st.header("Quiz Settings")
 
-    default_cat_idx = 0
+    ALL_OPTIONS = (
+        ["── Topic Categories ──"] + EXAM_CATEGORIES +
+        ["── Exam Scenarios ──"] + EXAM_SCENARIOS
+    )
+
+    default_cat_idx = 1  # first real category
     if "preselect_category" in st.session_state:
         cat = st.session_state.pop("preselect_category")
-        if cat in EXAM_CATEGORIES:
-            default_cat_idx = EXAM_CATEGORIES.index(cat)
+        if cat in ALL_OPTIONS:
+            default_cat_idx = ALL_OPTIONS.index(cat)
 
-    category = st.selectbox("Category", EXAM_CATEGORIES, index=default_cat_idx)
+    selected_option = st.selectbox(
+        "Category / Scenario",
+        ALL_OPTIONS,
+        index=default_cat_idx,
+        format_func=lambda x: x,
+    )
+
+    # Prevent selecting a divider label
+    if selected_option.startswith("──"):
+        st.warning("Please select a category or scenario.")
+        st.stop()
+
+    category = selected_option
     n_questions = st.selectbox("Number of questions", [5, 10, 15], index=1)
 
     source_mode = st.radio(

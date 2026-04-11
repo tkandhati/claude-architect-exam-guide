@@ -6,6 +6,13 @@ EXAM_CATEGORIES = [
     "Context Management & Reliability",
 ]
 
+EXAM_SCENARIOS = [
+    "Multi-Agent Research System",
+    "Code Generation with Claude Code",
+    "Customer Support Resolution Agent",
+    "Claude Code for Continuous Integration",
+]
+
 SYSTEM_PROMPT_GOTCHA = """You are an expert tutor for the Claude Certified Architect – Foundations (CCA-F) exam.
 Your explanations are grounded in Anthropic's official documentation and real production behavior.
 Focus on WHY the correct answer is correct (deterministic vs. probabilistic, structural vs. prompt-based).
