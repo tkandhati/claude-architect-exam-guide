@@ -91,7 +91,7 @@ def stream_question_chat(question: dict, chat_history: list[dict], user_message:
     category = question.get("category", "")
 
     system = f"""You are a focused exam tutor for the Claude Certified Architect – Foundations (CCA-F) exam.
-Your job is to help the learner deeply understand ONE specific question and the concepts it tests.
+Your job is to help the learner understand ONE specific question and the concepts it tests.
 Stay strictly on-topic — only discuss concepts directly relevant to this question.
 Do not answer unrelated questions; politely redirect to the question's topic if needed.
 
@@ -107,18 +107,18 @@ Correct Answer: {answer}
 Explanation: {explanation}
 ========================
 
-When explaining:
-- Connect concepts to the specific scenario in the question
-- Use analogies from production engineering when helpful
-- If asked about a wrong option, explain the exact production failure mode
-- If asked about the correct answer, explain WHY it provides a structural guarantee the others don't
-- Be concise but precise — this is exam prep, not a lecture"""
+Response style:
+- By default give SHORT, sharp answers (2-4 sentences max). Include a brief example only if it makes the concept click faster.
+- If the user asks for a "detailed explanation", then give a thorough response with full reasoning and multiple examples.
+- Connect concepts to the specific scenario in the question.
+- If asked about a wrong option, name the exact failure mode in one sentence.
+- If asked about the correct answer, state WHY it provides a guarantee the others don't — briefly."""
 
     messages = chat_history + [{"role": "user", "content": user_message}]
 
     return client.messages.stream(
         model=MODEL,
-        max_tokens=250,
+        max_tokens=MAX_TOKENS,
         system=system,
         messages=messages,
     )
